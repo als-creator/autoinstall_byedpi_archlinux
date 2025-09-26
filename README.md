@@ -71,3 +71,10 @@ sudo systemctl stop byedpi
 ## ⚠️ Важно
 
 Не запускайте скрипт от root, используйте обычного пользователя с sudo. Если у вас нет прав sudo — скрипт остановит выполнение.
+
+---
+### Автоматическая установка
+
+```bash
+curl -fsSL https://github.com/als-creator/autoinstall_zapret_archlinux/blob/main/autoinstall_zapret_archlinux.sh | sh
+```
