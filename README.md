@@ -76,5 +76,5 @@ sudo systemctl stop byedpi
 ### Автоматическая установка
 
 ```bash
-curl -fsSL https://github.com/als-creator/autoinstall_zapret_archlinux/blob/main/autoinstall_zapret_archlinux.sh | sh
+curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_zapret_archlinux/main/autoinstall_zapret_archlinux.sh | sh
 ```
