@@ -1,6 +1,36 @@
 # ByeDPI Installer and Configurator
 
-Этот скрипт автоматически устанавливает и настраивает утилиту **ByeDPI**.
+Этот скрипт автоматически устанавливает и настраивает утилиту **ByeDPI** на дистрибутивах семейства ArchLinux.
+
+<details>
+  <summary>Ориентировочно поддерживаемые дистры, проверялось на EndeavourOS и ArchLinux</summary>
+
+- ArcoLinux  
+- Arch Linux  
+- Carli  
+- Alci  
+- Ariser  
+- EndeavourOS  
+- Garuda  
+- Manjaro  
+- RebornOS  
+- Archcraft  
+- CachyOS  
+- Archman  
+- Biglinux  
+- Artix  
+- ParchLinux  
+- StormOS  
+- Mabox  
+- ArchBang  
+- Crystal Linux  
+- Liya  
+- Bluestar Linux  
+- Calam-Arch-Installer  
+
+_Скрипт ориентирован на скачивание из репозитория ArchLinux пакета byedpi-bin через yay и установку готовых конфигов для моего провайдера. Если репозитории ArchLinux не менялись, проблем быть не должно. Для других дистров можно форкнуть и адаптировать под свой пакетный менеджер, предварительно проверив пути установки и конфиги._
+
+</details>
 
 ---
 
