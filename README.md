@@ -106,5 +106,5 @@ sudo systemctl stop byedpi
 ### Автоматическая установка
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_bye_archlinux.sh | sh
+curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh | sh
 ```
