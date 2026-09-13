@@ -96,6 +96,11 @@ sudo systemctl stop byedpi
 
 > В репозитории есть готовый бэкап настроек для Proxy SwitchyOmega 3 с набором доменов для восстановления средствами расширения.
 
+Набор доменов покрывает страницы, плеер и превью YouTube:
+`*.youtube.com`, `*.googlevideo.com` (видео), `*.ytimg.com` / `i.ytimg.com`
+(превью и картинки), `yt3.ggpht.com` / `*.ggpht.com` / `yt3.googleusercontent.com`
+(аватары), а также rutracker, instagram, discord и др.
+
 ---
 
 ## ⚠️ Важно
