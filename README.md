@@ -1,155 +1,260 @@
 # ByeDPI Installer and Configurator
 
-Этот скрипт автоматически устанавливает и настраивает утилиту **ByeDPI** на дистрибутивах семейства ArchLinux.
-
-<details>
-  <summary>Ориентировочно поддерживаемые дистры, проверялось на EndeavourOS и ArchLinux</summary>
-
-- ArcoLinux  
-- Arch Linux  
-- Carli  
-- Alci  
-- Ariser  
-- EndeavourOS  
-- Garuda  
-- Manjaro  
-- RebornOS  
-- Archcraft  
-- CachyOS  
-- Archman  
-- Biglinux  
-- Artix  
-- ParchLinux  
-- StormOS  
-- Mabox  
-- ArchBang  
-- Crystal Linux  
-- Liya  
-- Bluestar Linux  
-- Calam-Arch-Installer  
-
-_Скрипт ориентирован на скачивание из репозитория ArchLinux пакета byedpi-bin через yay и установку готовых конфигов для моего провайдера. Если репозитории ArchLinux не менялись, проблем быть не должно. Для других дистров можно форкнуть и адаптировать под свой пакетный менеджер, предварительно проверив пути установки и конфиги._
-
-</details>
+Автоматический установщик и конфигуратор **ByeDPI** для дистрибутивов семейства
+ArchLinux (проверялось на EndeavourOS и Arch Linux).
 
 ---
 
-## 🔒 Безопасность
+## Описание сервиса
 
-- Запрещает запуск от root (чтобы избежать непредвиденных проблем).  
-- Проверяет, есть ли у текущего пользователя права sudo.
+**ByeDPI** — локальный прокси-демон, который «разжимает» ответы по протоколам DPI
+(Deep Packet Inspection) провайдера. Он не подменяет DNS и не маскирует трафик
+полностью, а лишь корректирует способ отправки запросов so, чтобы блокирующая
+сторона не могла по характерным признакам отличить реальный трафик и зарезать его.
 
----
+Как это применяется на практике:
 
-## ⚙️ Что делает скрипт
+- YouTube / rutracker / instagram и прочие заблокированные домены продолжают
+  работать без VPN.
+- Весь остальной трафик идёт мимо ByeDPI и не затрагивается.
 
-1. Проверяет наличие менеджера пакетов `yay` (AUR-хелпер) и при отсутствии — скачивает, собирает и устанавливает его.  
-2. Собираетт и устанавливает пакет `byedpi-bin` через `yay`.  
-3. Записывает конфигурацию ByeDPI в `/etc/byedpi.conf` с предустановленными параметрами.  
-4. Включает и запускает сервис `byedpi` через systemd по адресу 127.0.0.1:14228
-5. Выводит полезные инструкции и статус сервиса.
+### Что делает скрипт
 
----
+1. Проверяет наличие AUR-хелпера `yay`; если его нет — скачивает, собирает и
+   устанавливает.
+2. Устанавливает пакет `byedpi-bin` через `yay`.
+3. Пишет конфигурацию ByeDPI с предустановленными параметрами (путь зависит от
+   выбранного режима, см. ниже).
+4. Создаёт systemd-сервисы: сам демон, а для ipset-режима ещё и правила
+   перенаправления + таймер обновления списка доменов.
+5. Включает автозапуск и выводит статус.
 
-## 📝 Конфигурация
-
-Файл настроек находится по пути:
-
-
-/etc/byedpi.conf
-
-В нем настроены параметры запуска ByeDPI, включая адрес для прослушивания и правила для доменов.
-
----
-
-## 🚀 Как управлять сервисом
-
-- Запуск:
-
-
-sudo systemctl start byedpi
-
-- Перезапуск (после изменения настроек):
-
-
-sudo systemctl restart byedpi
-
-- Проверка статуса:
-
-
-sudo systemctl status byedpi
-
-- Остановка:
-
-
-sudo systemctl stop byedpi
+Демон слушает на `127.0.0.1:<порт>` (по умолчанию `14228`).
 
 ---
 
-## 🌐 Рекомендации по настройке браузера
+## Установка
 
-Для настройки доменов можно использовать расширения:
-
-- FoxyProxy  
-- SmartProxy  
-- Proxy SwitchyOmega 3  
-
-> В репозитории есть готовый бэкап настроек для Proxy SwitchyOmega 3 с набором доменов для восстановления средствами расширения.
-
-Набор доменов покрывает страницы, плеер и превью YouTube:
-`*.youtube.com`, `*.googlevideo.com` (видео), `*.ytimg.com` / `i.ytimg.com`
-(превью и картинки), `yt3.ggpht.com` / `*.ggpht.com` / `yt3.googleusercontent.com`
-(аватары), а также rutracker, instagram, discord и др.
-
----
-
-## ⚠️ Важно
-
-Не запускайте скрипт от root, используйте обычного пользователя с sudo. Если у вас нет прав sudo — скрипт остановит выполнение.
-
----
 ### Автоматическая установка
 
+Скрипт спрашивает два вопроса, а можно сразу задать их флагами (тогда ввод не нужен):
+
+1. Куда установить — `--system` или `--user`.
+2. Как использовать — `--ipset` или `--extension`.
+
+Интерактивно:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh | sh
+sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh)
 ```
 
-По умолчанию скрипт работает как SOCKS-прокси (нужны расширения в браузере).
+С флагами:
+
+```bash
+# для всех пользователей, без расширений (только домены из hostlist)
+sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --system --ipset
+
+# для всех пользователей, SOCKS-прокси для расширения браузера
+sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --system --extension
+
+# только для текущего пользователя, без расширений
+sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --user --ipset
+
+# только для текущего пользователя, SOCKS-прокси для расширения браузера
+sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --user --extension
+```
+
+Старые короткие флаги работают как раньше: `--transparent` = `--system --ipset`,
+`--socks` = `--system --extension`, `--transparent-off` = `--off`.
+
+Запускайте скрипт обычным пользователем с правами sudo, не от root.
 
 ---
 
-## 🌐 Работа без расширений (transparent-режим)
+## Удаление и управление
 
-ByeDPI умеет работать прозрачно для всей системы — без FoxyProxy/SwitchyOmega.
-Обработке подлежат **только домены из hostlist** (как работает zapret), весь
-остальной трафик идёт напрямую, не через прокси.
+### Статус
 
 ```bash
-sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --transparent
+sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --status
 ```
 
-Что при этом происходит:
-- В конфиг добавляется флаг `-E` (transparent). Демон читает настоящий адрес назначения через `SO_ORIGINAL_DST` и обрабатывает его без SOCKS-рукопожатия.
-- Домены из `/etc/byedpi-hosts.txt` резолвятся в IP-адреса и складываются в ipset `BYEDPI_HOSTS`.
-- Создаётся systemd-юнит `byedpi-redirect.service`: `iptables -t nat` правило `REDIRECT` матчит ТОЛЬКО пакеты, чей адрес назначения есть в ipset `BYEDPI_HOSTS` (порты 80/443, TCP), и заворачивает их в 127.0.0.1:14228.
-- Хосты вне списка проходят мимо — без изменения.
-- Собственный трафик пакетов демона (`--uid-owner ! 0`) и локальные подсети исключены из перенаправления.
-- Таймер `byedpi-hosts.timer` обновляет ipset каждый час (`byedpi-hosts.service`).
-- Правила переживают перезагрузку.
-
-Управление списком доменов:
+### Удаление (полное отключение)
 
 ```bash
-sudo nano /etc/byedpi-hosts.txt
+sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --off
+```
+
+`--off` останавливает и удаляет сервисы, таймеры и правила iptables/ipset для
+установленных ранее режимов (и system, и user).
+
+### Сервис вручную
+
+```bash
+sudo systemctl start byedpi       # запуск
+sudo systemctl restart byedpi     # перезапуск после смены настроек
+sudo systemctl status byedpi      # статус
+sudo systemctl stop byedpi        # остановка
+```
+
+В user-режиме — те же команды, но для systemd-user без sudo:
+
+```bash
+systemctl --user restart byedpi
+```
+
+---
+
+## Режимы установки
+
+### system (для всех пользователей)
+
+- конфиг: `/etc/byedpi.conf`
+- hostlist: `/etc/byedpi-hosts.txt` (для ipset-режима)
+- демон: systemd-сервис `byedpi.service`
+- порт: `14228`
+
+### user (только для текущего пользователя)
+
+- конфиг: `~/.config/byedpi.conf`
+- hostlist: `~/.config/byedpi-hosts.txt` (для ipset-режима)
+- демон: systemd-**user**-сервис `byedpi.service` (запускается при входе)
+- порт: `14228 + (uid - 1000)`, чтобы у разных пользователей порты не пересекались
+
+В ipset-режиме правила REDIRECT привязаны к `--uid-owner` текущего пользователя и
+затрагивают только его трафик. Сам ipset живёт в ядре, поэтому корневые unit-ы
+`byedpi-hosts-<uid>` и `byedpi-redirect-<uid>` всё же создаются в
+`/etc/systemd/system`, но читают hostlist из `~/.config`.
+
+Каждый пользователь может запустить скрипт повторно со своими флагами
+`--user ...`, не затрагивая остальных.
+
+---
+
+## Как использовать: ipset или extension
+
+| | `--ipset` | `--extension` |
+|---|---|---|
+| Расширения браузера | не нужны | нужны (FoxyProxy / SmartProxy / SwitchyOmega 3) |
+| Охват | только домены из hostlist | только то, что настроено в расширении |
+| Root | нужен (правила в ядре) | не нужен |
+| UDP/QUIC | не обрабатывается | не обрабатывается |
+
+### ipset — работа без расширений
+
+Домены из hostlist резолвятся в IP-адреса и складываются в ipset. Правило
+`iptables -t nat` `REDIRECT` матчит ТОЛЬКО пакеты, чей адрес назначения есть в
+этом ipset (порты 80/443, TCP), и заворачивает их в локальный порт ByeDPI.
+Остальной трафик идёт напрямую. ipset обновляется таймером каждый час.
+
+### extension — SOCKS-прокси для расширения
+
+ByeDPI поднимает SOCKS-прокси на `127.0.0.1:<порт>`. Настройте прокси-расширение
+на этот адрес и импортируйте список доменов. В репозитории есть готовый бэкап
+настроек для SwitchyOmega с набором доменов для восстановления средствами
+расширения.
+
+---
+
+## Как изменить список доменов
+
+### ipset-режим (без расширений)
+
+Отредактируйте hostlist и перезапустите сервисы:
+
+```bash
+sudo nano /etc/byedpi-hosts.txt                                # system
 sudo systemctl restart byedpi-hosts byedpi-redirect
+
+nano ~/.config/byedpi-hosts.txt                                # user
+systemctl --user restart byedpi-hosts byedpi-redirect          # user
 ```
 
-Отключить и вернуть SOCKS-режим:
+Изменения ipset пересоберутся автоматически либо по таймеру (раз в час), либо
+при перезапуске сервисов.
+
+### extension-режим
+
+Список доменов хранится в расширении браузера. Правьте его через интерфейс
+расширения или восстановите готовый бэкап из репозитория. Изменения конфига:
 
 ```bash
-sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --transparent-off
+sudo nano /etc/byedpi.conf            # system
+sudo systemctl restart byedpi
+
+nano ~/.config/byedpi.conf            # user
+systemctl --user restart byedpi       # user
 ```
 
-> ⚠️ Transparent-режим перенаправляет только TCP. UDP (например, QUIC от YouTube)
-> не обрабатывается — при необходимости отключите QUIC в браузере
-> (`chrome://flags/#enable-quic` → Disabled), чтобы видео шло по TCP 443.
+### Смена стратегии desync
+
+Параметры стратегии лежат в файле `BYEDPI_OPTIONS` внутри конфига. Готовые
+стратегии можно взять из файла `Стратегии byedpi.txt` в репозитории —
+подставьте нужную строку в конфиг и перезапустите сервис.
+
+---
+
+## Рекомендации по настройке браузера
+
+Для extension-режима используются расширения-переключатели прокси:
+
+- FoxyProxy
+- SmartProxy
+- Proxy SwitchyOmega 3
+
+Готовый бэкап настроек SwitchyOmega лежит в репозитории. Набор доменов покрывает
+страницы, плеер и превью YouTube: `*.youtube.com`, `*.googlevideo.com` (видео),
+`*.ytimg.com` / `i.ytimg.com` (превью и картинки), `yt3.ggpht.com` /
+`*.ggpht.com` / `yt3.googleusercontent.com` (аватары), а также rutracker,
+instagram, discord и др.
+
+---
+
+## Ограничения transparent-режима
+
+Transparent-режим (ipset) перенаправляет только TCP. UDP (например, QUIC от
+YouTube) не обрабатывается — при необходимости отключите QUIC в браузере
+(`chrome://flags/#enable-quic` → Disabled), чтобы видео шло по TCP 443.
+
+---
+
+## Безопасность
+
+- Запрещает запуск от root.
+- Проверяет наличие прав sudo у текущего пользователя.
+- В ipset-режиме отсекает служебные подсети (локальные адреса) от
+  перенаправления, чтобы не заворачивать собственный трафик.
+
+---
+
+## Поддерживаемые дистрибутивы
+
+Ориентировочно, проверялось на EndeavourOS и Arch Linux:
+
+- ArcoLinux
+- Arch Linux
+- Carli
+- Alci
+- Ariser
+- EndeavourOS
+- Garuda
+- Manjaro
+- RebornOS
+- Archcraft
+- CachyOS
+- Archman
+- Biglinux
+- Artix
+- ParchLinux
+- StormOS
+- Mabox
+- ArchBang
+- Crystal Linux
+- Liya
+- Bluestar Linux
+- Calam-Arch-Installer
+
+Скрипт ориентирован на установку пакета `byedpi-bin` из AUR через `yay` и готовые
+конфиги. Если репозитории ArchLinux не менялись, проблем быть не должно. Для
+других дистрибутивов можно форкнуть и адаптировать под свой пакетный менеджер,
+предварительно проверив пути установки и конфигов.
