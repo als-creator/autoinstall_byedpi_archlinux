@@ -113,3 +113,32 @@ sudo systemctl stop byedpi
 ```bash
 curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh | sh
 ```
+
+По умолчанию скрипт работает как SOCKS-прокси (нужны расширения в браузере).
+
+---
+
+## 🌐 Работа без расширений (transparent-режим)
+
+ByeDPI умеет работать прозрачно для всей системы — без FoxyProxy/SwitchyOmega.
+
+```bash
+sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --transparent
+```
+
+Что при этом происходит:
+- В конфиг добавляется флаг `-E` (transparent). Демон читает настоящий адрес назначения через `SO_ORIGINAL_DST` и обрабатывает его без SOCKS-рукопожатия.
+- Создаётся systemd-юнит `byedpi-redirect.service`, который добавляет в `iptables -t nat` правило `REDIRECT`: исходящие TCP-соединения на порты 80/443 заворачиваются в 127.0.0.1:14228.
+- Собственный трафик пакетов демона (`--uid-owner ! 0`) и локальные подсети исключены из перенаправления.
+- Правила переживают перезагрузку, юнит активен при старте системы.
+
+Отключить и вернуть SOCKS-режим:
+
+```bash
+sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --transparent-off
+```
+
+> ⚠️ Transparent-режим применяется ко всем приложениям системы, а не только к браузеру.
+> UDP (например, QUIC от YouTube) перенаправлению не подлежит — при необходимости
+> отключите QUIC в браузере (`chrome://flags/#enable-quic` → Disabled), чтобы видео
+> шло по TCP 443 и обрабатывалось ByeDPI.
