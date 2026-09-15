@@ -90,7 +90,8 @@ curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_arch
 curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-off.sh && sh /tmp/byedpi-off.sh --off
 ```
 
-`--off` останавливает и удаляет сервисы, таймеры и правила iptables/ipset для
+`--off` останавливает и удаляет сервисы, таймеры, правила iptables/ipset и
+конфиги (`/etc/byedpi.conf`, `~/.config/byedpi.conf`) и hostlist для
 установленных ранее режимов (и system, и user).
 
 ### Сервис вручную

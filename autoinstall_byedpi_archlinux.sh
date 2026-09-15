@@ -38,7 +38,7 @@ usage(){
   --user          установить только для текущего пользователя
   --ipset         метод ipset: только домены из hostlist, без расширений
   --extension     метод extension: SOCKS-прокси для браузерного расширения
-  --off | --remove  полностью отключить/удалить сервисы и правила
+  --off | --remove  отключить, удалить сервисы, правила и конфиги
   --status|--info   показать текущее состояние
   --port N        изменить порт
   --socks         = --system --extension (старая совместимость)
@@ -225,7 +225,11 @@ cmd_off(){
              /etc/systemd/system/byedpi-hosts.service \
              /etc/systemd/system/byedpi-hosts-$UID_NUM.service
   sudo systemctl daemon-reload 2>/dev/null || true
-  echo "ByeDPI отключён. Конфиги не удалялись: $HOME/.config/byedpi.conf, /etc/byedpi.conf"
+  sudo rm -f /etc/byedpi.conf /etc/byedpi-hosts.txt \
+             /usr/local/bin/byedpi-hosts-update.sh \
+             "/usr/local/bin/byedpi-hosts-update-$UID_NUM.sh"
+  rm -f "$HOME/.config/byedpi.conf" "$HOME/.config/byedpi-hosts.txt"
+  echo "ByeDPI отключён. Конфиги и hostlist удалены."
   exit 0
 }
 
