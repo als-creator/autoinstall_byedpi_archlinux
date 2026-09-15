@@ -14,11 +14,11 @@
 #     порт    -> свой на каждого пользователя (14228 + uid - 1000)
 #
 #   Метод ipset (--ipset):
-#     без браузерных расширений. hostlist резолвится в ipset, правила
-#     REDIRECT матчат только IP из списка. ipset живёт в ядре — заполнение
-#     требует root. В режиме пользователя правило привязано к --uid-owner,
-#     поэтому затрагивает трафик ТОЛЬКО этого пользователя; сам hostlist и
-#     конфиг остаются в ~/.config.
+#     без браузерных расширений. iptables REDIRECT заворачивает ВЕСЬ TCP 80/443
+#     в ByeDPI, а демон фильтрует домены по SNI (--hosts) — работает и для CDN
+#     (googlevideo), у которых тысячи IP. В режиме пользователя правило
+#     привязано к --uid-owner, поэтому затрагивает трафик ТОЛЬКО этого
+#     пользователя; сам hostlist и конфиг остаются в ~/.config.
 #
 #   Метод extension (--extension):
 #     SOCKS-прокси 127.0.0.1:PORT, конфигурируется в браузерном расширении
@@ -99,7 +99,7 @@ if [ "$ACTION" = "install" ]; then
   [ -z "$SCOPE" ] && SCOPE=system
   if [ -z "$METHOD" ] && [ -t 0 ]; then
     echo "=== Как использовать? ==="
-    echo "  1) ipset — без расширений, только домены из списка"
+    echo "  1) ipset — без расширений, весь трафик через ByeDPI (фильтр по SNI)"
     echo "  2) extension — расширение в браузере (SOCKS)"
     printf "Выбор (1/2): "; read -r c
     [ "$c" = "1" ] && METHOD=ipset || METHOD=extension
@@ -126,23 +126,15 @@ install_packages(){
     log_ok "Устанавливаю byedpi-bin через yay..."
     yay -Sy --noconfirm byedpi-bin
   fi
-  if [ "$METHOD" = "ipset" ]; then
-    if ! pacman -Q ipset >/dev/null 2>&1; then
-      log_ok "Устанавливаю ipset..."
-      sudo pacman -S --noconfirm --needed ipset
-    fi
-  fi
 }
 
 # ---------------------------------------------------------------------------
 # Значения по режиму
 # ---------------------------------------------------------------------------
-UP=/usr/local/bin/byedpi-hosts-update.sh
 if [ "$SCOPE" = "user" ]; then
   CFG="$HOME/.config/byedpi.conf"
   HOSTS="$HOME/.config/byedpi-hosts.txt"
-  IHOSTS="BYEDPI_$UID_NUM"                         # свой ipset на пользователя
-  UP="/usr/local/bin/byedpi-hosts-update-$UID_NUM.sh"  # root-обёртка, читает ~/.config
+  IHOSTS="BYEDPI_$UID_NUM"                         # цепочка iptables на пользователя
   PORT=$(( 14228 + UID_NUM - 1000 ))
   [ -n "$ARG_PORT" ] && PORT="$ARG_PORT"
 else
@@ -161,7 +153,10 @@ DESYNC_FALLBACK=""
 
 HOSTLIST_OPTIONS="-i 127.0.0.1 --port $PORT $DESYNC_ACTIVE $DESYNC_FALLBACK"
 if [ "$METHOD" = "ipset" ]; then
-  HOSTLIST_OPTIONS="-E $HOSTLIST_OPTIONS"
+  # Прозрачный режим: iptables REDIRECT заворачивает весь TCP в ByeDPI,
+  # а ciadpi сам решает по SNI (--hosts), какие домены десинхронизировать.
+  # Так работают и CDN-домены (googlevideo): фильтр по домену, не по IP.
+  HOSTLIST_OPTIONS="-E -H $HOSTS $HOSTLIST_OPTIONS"
 fi
 
 # ---------------------------------------------------------------------------
@@ -208,16 +203,21 @@ cmd_off(){
   sudo systemctl stop byedpi-hosts.service 2>/dev/null || true
   sudo systemctl stop "byedpi-hosts-$UID_NUM.service" 2>/dev/null || true
   sudo systemctl disable --now byedpi 2>/dev/null || true
+  sudo systemctl disable --now "byedpi-$UID_NUM" 2>/dev/null || true
 
   sudo iptables -t nat -D OUTPUT -j BYEDPI 2>/dev/null || true
+  sudo iptables -t nat -D OUTPUT -j BYEDPI_HOSTS 2>/dev/null || true
   sudo iptables -t nat -D OUTPUT -j "BYEDPI_$UID_NUM" 2>/dev/null || true
   sudo iptables -t nat -F BYEDPI 2>/dev/null || true
+  sudo iptables -t nat -F BYEDPI_HOSTS 2>/dev/null || true
   sudo iptables -t nat -F "BYEDPI_$UID_NUM" 2>/dev/null || true
   sudo iptables -t nat -X BYEDPI 2>/dev/null || true
+  sudo iptables -t nat -X BYEDPI_HOSTS 2>/dev/null || true
   sudo iptables -t nat -X "BYEDPI_$UID_NUM" 2>/dev/null || true
   sudo ipset destroy BYEDPI_HOSTS 2>/dev/null || true
   sudo ipset destroy "BYEDPI_$UID_NUM" 2>/dev/null || true
   sudo rm -f /etc/systemd/system/byedpi.service \
+             /etc/systemd/system/byedpi-$UID_NUM.service \
              /etc/systemd/system/byedpi-redirect.service \
              /etc/systemd/system/byedpi-redirect-$UID_NUM.service \
              /etc/systemd/system/byedpi-hosts.timer \
@@ -381,47 +381,47 @@ EOL
 }
 
 # ---------------------------------------------------------------------------
-# Скрипт обновления hostlist -> ipset (root)
-# ---------------------------------------------------------------------------
-write_hosts_updater(){
-  local inst_path="$1" set_name="$2" list_path="$3"
-  cat > /tmp/byedpi-up-sh.sh <<UP
-#!/bin/sh
-# Автосгенерировано установщиком ByeDPI. Заполняет ipset $set_name из $list_path.
-set -u
-SET="$set_name"
-LIST="$list_path"
-[ -f "\$LIST" ] || { echo "Нет hostlist: \$LIST" >&2; exit 0; }
-ipset create "\$SET" hash:ip 2>/dev/null || true
-ipset flush "\$SET"
-while IFS= read -r domain; do
-  [ -z "\$domain" ] && continue
-  case "\$domain" in \#*) continue ;; esac
-  getent ahosts "\$domain" 2>/dev/null | awk '{print \$1}' | sort -u | while read -r ip; do
-    ipset add "\$SET" "\$ip" 2>/dev/null || true
-  done
-  # браузер ходит на www.<домен>, IP которого могут отличаться от голого домена
-  case "\$domain" in www.*) ;; *) getent ahosts "www.\$domain" 2>/dev/null | awk '{print \$1}' | sort -u | while read -r ip; do
-      ipset add "\$SET" "\$ip" 2>/dev/null || true
-    done ;; esac
-done < "\$LIST"
-members=\$(ipset list "\$SET" 2>/dev/null | grep -cE '^[0-9a-fA-F:\.]+\$' || true)
-echo "ByeDPI: IP в ipset \$SET: \$members"
-exit 0
-UP
-  sudo install -m 755 /tmp/byedpi-up-sh.sh "$inst_path"
-  rm -f /tmp/byedpi-up-sh.sh
-  log_ok "Скрипт обновления ipset: $inst_path"
-}
-
-# ---------------------------------------------------------------------------
 # systemd-юниты
 # ---------------------------------------------------------------------------
 write_units(){
-  UCFG="$HOME/.config"
   if [ "$SCOPE" = "user" ]; then
     # ==== user scope ====
-    cat > "$HOME/.config/systemd/user/byedpi.service" <<EOF
+    if [ "$METHOD" = "ipset" ]; then
+      # В прозрачном режиме демон обязан работать под root: его собственные
+      # исходящие соединения к реальным серверам иначе попали бы под тот же
+      # REDIRECT (uid демона совпадает с uid браузера) и зациклились бы.
+      systemctl --user disable --now byedpi.service 2>/dev/null || true
+      rm -f "$HOME/.config/systemd/user/byedpi.service"
+      systemctl --user disable --now byedpi-hosts.timer 2>/dev/null || true
+      systemctl --user stop byedpi-hosts.service 2>/dev/null || true
+      sudo ipset destroy "$IHOSTS" 2>/dev/null || true
+      sudo tee "/etc/systemd/system/byedpi-$UID_NUM.service" >/dev/null <<EOF
+[Unit]
+Description=ByeDPI transparent (user $USER)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ciadpi \$BYEDPI_OPTIONS
+EnvironmentFile=$HOME/.config/byedpi.conf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+      sudo systemctl daemon-reload
+      sudo systemctl enable --now "byedpi-$UID_NUM.service" >/dev/null 2>&1 || log_warn "root-демон не запустился, см. sudo journalctl -u byedpi-$UID_NUM"
+      log_ok "Демон (root): /etc/systemd/system/byedpi-$UID_NUM.service"
+    else
+      # миграция с ipset -> extension: гасим root-юниты transparent-режима
+      sudo systemctl disable --now "byedpi-$UID_NUM" 2>/dev/null || true
+      sudo systemctl disable --now "byedpi-redirect-$UID_NUM" 2>/dev/null || true
+      sudo rm -f "/etc/systemd/system/byedpi-$UID_NUM.service" \
+                 "/etc/systemd/system/byedpi-redirect-$UID_NUM.service"
+      sudo ipset destroy "$IHOSTS" 2>/dev/null || true
+      cat > "$HOME/.config/systemd/user/byedpi.service" <<EOF
 [Unit]
 Description=ByeDPI (user $USER)
 After=network-online.target
@@ -436,39 +436,20 @@ Restart=on-failure
 [Install]
 WantedBy=default.target
 EOF
+      systemctl --user daemon-reload
+      systemctl --user enable --now byedpi.service >/dev/null 2>&1 || log_warn "user unit не запустился сразу (включится при входе)"
+      log_ok "Юзер-сервис: ~/.config/systemd/user/byedpi.service"
+    fi
 
     if [ "$METHOD" = "ipset" ]; then
-      # ipset требует root: системные unit-ы, но читают hostlist юзера
-      sudo tee "/etc/systemd/system/byedpi-hosts-$UID_NUM.service" >/dev/null <<EOF
-[Unit]
-Description=ByeDPI hostlist -> ipset (uid $UID_NUM)
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=$UP
-
-[Install]
-WantedBy=multi-user.target
-EOF
-      sudo tee "/etc/systemd/system/byedpi-hosts-$UID_NUM.timer" >/dev/null <<EOF
-[Unit]
-Description=ByeDPI hostlist ipset refresh (uid $UID_NUM)
-
-[Timer]
-OnBootSec=1min
-OnUnitActiveSec=1h
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
+      # ipset не нужен: REDIRECT весь TCP 80/443, ciadpi сам фильтрует домены
+      # по SNI через --hosts (как расширение). Демон root по правилу
+      # --uid-owner НЕ попадает под REDIRECT, поэтому зацикливания нет.
       sudo tee "/etc/systemd/system/byedpi-redirect-$UID_NUM.service" >/dev/null <<EOF
 [Unit]
 Description=ByeDPI REDIRECT (uid $UID_NUM)
-Wants=byedpi.service
-After=byedpi.service
+Wants=byedpi-$UID_NUM.service
+After=byedpi-$UID_NUM.service
 
 [Service]
 Type=oneshot
@@ -481,7 +462,7 @@ iptables -t nat -A $IHOSTS -m owner --uid-owner $UID_NUM -d 10.0.0.0/8 -j RETURN
 iptables -t nat -A $IHOSTS -m owner --uid-owner $UID_NUM -d 172.16.0.0/12 -j RETURN; \
 iptables -t nat -A $IHOSTS -m owner --uid-owner $UID_NUM -d 192.168.0.0/16 -j RETURN; \
 iptables -t nat -A $IHOSTS -m owner --uid-owner $UID_NUM -d 169.254.0.0/16 -j RETURN; \
-iptables -t nat -A $IHOSTS -m owner --uid-owner $UID_NUM -p tcp -m set --match-set $IHOSTS dst -m multiport --dports 80,443 -j REDIRECT --to-ports $PORT; \
+iptables -t nat -A $IHOSTS -m owner --uid-owner $UID_NUM -p tcp -m multiport --dports 80,443 -j REDIRECT --to-ports $PORT; \
 iptables -t nat -A OUTPUT -j $IHOSTS'
 ExecStop=/bin/sh -c 'iptables -t nat -D OUTPUT -j $IHOSTS 2>/dev/null || true; iptables -t nat -F $IHOSTS 2>/dev/null || true; iptables -t nat -X $IHOSTS 2>/dev/null || true'
 
@@ -489,14 +470,8 @@ ExecStop=/bin/sh -c 'iptables -t nat -D OUTPUT -j $IHOSTS 2>/dev/null || true; i
 WantedBy=multi-user.target
 EOF
       sudo systemctl daemon-reload
-      sudo systemctl enable --now "byedpi-hosts-$UID_NUM.timer" >/dev/null 2>&1 || log_warn "Не удалось включить таймер hostlist"
-      sudo "$UP" || log_warn "Не удалось заполнить ipset сразу"
       sudo systemctl enable --now "byedpi-redirect-$UID_NUM.service" >/dev/null 2>&1 || log_warn "Не удалось включить REDIRECT"
     fi
-
-    systemctl --user daemon-reload 2>/dev/null || true
-    systemctl --user enable --now byedpi.service >/dev/null 2>&1 || log_warn "user unit не запустился сразу (включится при входе)"
-    log_ok "Юзер-сервис: ~/.config/systemd/user/byedpi.service"
   else
     # ==== system scope ====
     # Свой юнит в /etc/systemd/system перекрывает пакетный /usr/lib (у него
@@ -518,39 +493,18 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
-    sudo systemctl daemon-reload
+sudo systemctl daemon-reload
     sudo systemctl enable --now byedpi >/dev/null 2>&1 || log_warn "byedpi не запустился, см. sudo journalctl -u byedpi"
     if [ "$METHOD" = "ipset" ]; then
-      sudo tee /etc/systemd/system/byedpi-hosts.service >/dev/null <<EOF
-[Unit]
-Description=ByeDPI hostlist -> ipset update
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=$UP
-
-[Install]
-WantedBy=multi-user.target
-EOF
-      sudo tee /etc/systemd/system/byedpi-hosts.timer >/dev/null <<EOF
-[Unit]
-Description=ByeDPI hostlist ipset refresh
-
-[Timer]
-OnBootSec=1min
-OnUnitActiveSec=1h
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
+      # зачистка старых unit-ов и ipset из прежних версий установщика
+      sudo systemctl disable --now byedpi-hosts.timer 2>/dev/null || true
+      sudo systemctl stop byedpi-hosts.service 2>/dev/null || true
+      sudo ipset destroy "$IHOSTS" 2>/dev/null || true
       sudo tee /etc/systemd/system/byedpi-redirect.service >/dev/null <<EOF
 [Unit]
-Description=ByeDPI transparent redirect rules (hostlist)
-Wants=byedpi.service byedpi-hosts.service
-After=byedpi.service byedpi-hosts.service
+Description=ByeDPI transparent redirect rules (SNI через --hosts)
+Wants=byedpi.service
+After=byedpi.service
 Before=network-pre.target
 
 [Service]
@@ -564,7 +518,7 @@ iptables -t nat -A $IHOSTS -d 10.0.0.0/8 -j RETURN; \
 iptables -t nat -A $IHOSTS -d 172.16.0.0/12 -j RETURN; \
 iptables -t nat -A $IHOSTS -d 192.168.0.0/16 -j RETURN; \
 iptables -t nat -A $IHOSTS -d 169.254.0.0/16 -j RETURN; \
-iptables -t nat -A $IHOSTS -p tcp -m owner ! --uid-owner 0 -m set --match-set $IHOSTS dst -m multiport --dports 80,443 -j REDIRECT --to-ports $PORT; \
+iptables -t nat -A $IHOSTS -p tcp -m owner ! --uid-owner 0 -m multiport --dports 80,443 -j REDIRECT --to-ports $PORT; \
 iptables -t nat -A OUTPUT -j $IHOSTS'
 ExecStop=/bin/sh -c 'iptables -t nat -D OUTPUT -j $IHOSTS 2>/dev/null || true; iptables -t nat -F $IHOSTS 2>/dev/null || true; iptables -t nat -X $IHOSTS 2>/dev/null || true'
 
@@ -572,9 +526,17 @@ ExecStop=/bin/sh -c 'iptables -t nat -D OUTPUT -j $IHOSTS 2>/dev/null || true; i
 WantedBy=multi-user.target
 EOF
       sudo systemctl daemon-reload
-      sudo systemctl enable --now byedpi-hosts.timer >/dev/null 2>&1 || log_warn "Не удалось включить таймер hostlist"
-      sudo "$UP" || log_warn "Не удалось заполнить ipset сразу"
       sudo systemctl enable --now byedpi-redirect >/dev/null 2>&1 || log_warn "Не удалось включить REDIRECT"
+    else
+      # миграция с ipset -> extension: убираем transparent-правила и hostlist-юниты
+      sudo systemctl disable --now byedpi-redirect 2>/dev/null || true
+      sudo systemctl disable --now byedpi-hosts.timer 2>/dev/null || true
+      sudo systemctl stop byedpi-hosts.service 2>/dev/null || true
+      sudo rm -f /etc/systemd/system/byedpi-redirect.service \
+                 /etc/systemd/system/byedpi-hosts.timer \
+                 /etc/systemd/system/byedpi-hosts.service
+      sudo systemctl daemon-reload 2>/dev/null || true
+      sudo ipset destroy "$IHOSTS" 2>/dev/null || true
     fi
   fi
 }
@@ -590,9 +552,10 @@ show_summary(){
   echo "Hostlist: $HOSTS"
   echo "Стратегия: $DESYNC_ACTIVE $DESYNC_FALLBACK"
   if [ "$METHOD" = "ipset" ]; then
-    echo "Обрабатываются ТОЛЬКО домены из hostlist (ipset=$IHOSTS)."
-    echo "  Правка: nano $HOSTS; затем $0 --status / перезапуск сервисов."
-    echo "  Обновить ipset вручную: sudo $UP"
+    echo "Прозрачный режим: весь TCP 80/443 -> ByeDPI, дальше фильтр по SNI."
+    echo "  Десинхронизируются ТОЛЬКО домены из $HOSTS (как в расширении)."
+    echo "  Правка: sudo nano $HOSTS; перезапуск: sudo systemctl restart byedpi"
+    [ "$SCOPE" = "user" ] && echo "  (в user-режиме юнит называется byedpi-$UID_NUM)"
   elif [ "$SCOPE" = "system" ]; then
     echo "SOCKS-прокси: 127.0.0.1:$PORT (расширения FoxyProxy/SmartProxy/SwitchyOmega 3)."
     echo "Бэкап Omega: ZeroOmegaOptions-*.bak в репозитории."
@@ -600,7 +563,7 @@ show_summary(){
     echo "SOCKS-прокси: 127.0.0.1:$PORT (только для этого пользователя)."
     echo "Настройте расширение на этот порт."
   fi
-  [ "$SCOPE" = "user" ] && echo "Автозапуск при входе включён. Для запуска без входа в сессию: sudo loginctl enable-linger $USER"
+  [ "$SCOPE" = "user" ] && [ "$METHOD" = "extension" ] && echo "Автозапуск при входе включён. Для запуска без входа в сессию: sudo loginctl enable-linger $USER"
 }
 
 # ---------------------------------------------------------------------------
@@ -613,9 +576,6 @@ case "$ACTION" in
     install_packages
     write_config
     write_hostlist
-    if [ "$METHOD" = "ipset" ]; then
-      write_hosts_updater "$UP" "$IHOSTS" "$HOSTS"
-    fi
     write_units
     show_summary
     ;;

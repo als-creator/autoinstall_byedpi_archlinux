@@ -136,10 +136,11 @@ systemctl --user restart byedpi
 - демон: systemd-**user**-сервис `byedpi.service` (запускается при входе)
 - порт: `14228 + (uid - 1000)`, чтобы у разных пользователей порты не пересекались
 
-В ipset-режиме правила REDIRECT привязаны к `--uid-owner` текущего пользователя и
-затрагивают только его трафик. Сам ipset живёт в ядре, поэтому корневые unit-ы
-`byedpi-hosts-<uid>` и `byedpi-redirect-<uid>` всё же создаются в
-`/etc/systemd/system`, но читают hostlist из `~/.config`.
+В ipset-режиме всё работает под root: демон `byedpi-<uid>.service` и правила
+REDIRECT `byedpi-redirect-<uid>.service` — но трафик REDIRECT затронет только
+этого пользователя (`--uid-owner`), а hostlist и конфиг остаются в `~/.config`.
+Демон обязан быть root: иначе его собственные исходящие соединения к реальным
+серверам попали бы под тот же REDIRECT и зациклились.
 
 Каждый пользователь может запустить скрипт повторно со своими флагами
 `--user ...`, не затрагивая остальных.
@@ -151,16 +152,19 @@ systemctl --user restart byedpi
 | | `--ipset` | `--extension` |
 |---|---|---|
 | Расширения браузера | не нужны | нужны (FoxyProxy / SmartProxy / SwitchyOmega 3) |
-| Охват | только домены из hostlist | только то, что настроено в расширении |
+| Охват | домены из hostlist (фильтр по SNI) | только то, что настроено в расширении |
 | Root | нужен (правила в ядре) | не нужен |
 | UDP/QUIC | не обрабатывается | не обрабатывается |
 
 ### ipset — работа без расширений
 
-Домены из hostlist резолвятся в IP-адреса и складываются в ipset. Правило
-`iptables -t nat` `REDIRECT` матчит ТОЛЬКО пакеты, чей адрес назначения есть в
-этом ipset (порты 80/443, TCP), и заворачивает их в локальный порт ByeDPI.
-Остальной трафик идёт напрямую. ipset обновляется таймером каждый час.
+Правило `iptables -t nat` `REDIRECT` (порты 80/443, TCP) заворачивает **весь**
+исходящий трафик в локальный порт ByeDPI. Дальше ByeDPI смотрит на SNI
+(домен) в TLS-запросе и десинхронизирует только те соединения, чей домен есть
+в hostlist — ровно так, как это делает расширение в SOCKS-режиме. Это надёжно
+работает и для CDN-доменов (googlevideo и пр.), у которых тысячи IP: фильтр
+идёт по домену, а не по IP, поэтому ipset и таймер обновления не нужны.
+Остальной трафик просто проходит без обработки.
 
 ### extension — SOCKS-прокси для расширения
 
@@ -178,15 +182,23 @@ ByeDPI поднимает SOCKS-прокси на `127.0.0.1:<порт>`. Нас
 Отредактируйте hostlist и перезапустите сервисы:
 
 ```bash
-sudo nano /etc/byedpi-hosts.txt                                # system
-sudo systemctl restart byedpi-hosts byedpi-redirect
-
-nano ~/.config/byedpi-hosts.txt                                # user
-systemctl --user restart byedpi-hosts byedpi-redirect          # user
+sudo nano /etc/byedpi-hosts.txt
 ```
 
-Изменения ipset пересоберутся автоматически либо по таймеру (раз в час), либо
-при перезапуске сервисов.
+```bash
+sudo systemctl restart byedpi
+```
+
+Для user-режима:
+
+```bash
+nano ~/.config/byedpi-hosts.txt
+```
+
+```bash
+systemctl --user restart byedpi        # user + extension
+sudo systemctl restart byedpi-<uid>    # user + ipset
+```
 
 ### extension-режим
 
