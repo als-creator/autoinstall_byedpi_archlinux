@@ -152,17 +152,12 @@ else
   PORT="${ARG_PORT:-14228}"
 fi
 
-# Параметры демона.
+# Параметры демона (длинная стратегия desync).
 # ВАЖНО: в ByeDPI опция --auto разделяет опции на группы. Опции ДО первого
 # --auto применяются ВСЕГДА (активная стратегия), опции ПОСЛЕ --auto — только
-# при срабатывании события (torst/ssl_err/...). Раньше активных опций почти
-# не было (-s0 -o1), а fake/disorder висели за --auto и почти никогда не
-# применялись — поэтому «ни один конфиг не работал».
-# АКТИВНАЯ стратегия — работает на практике для YouTube/Discord/X (проверено):
-#   --tlsrec 1+s разбивает TLS-запись в середине SNI (DPI не читает SNI);
-#   --auto=torst --timeout 3 реагирует на сброс/таймаут и включает --disorder 1.
-DESYNC_ACTIVE="-Kt,h --tlsrec 1+s --disorder 1"
-DESYNC_FALLBACK="--auto=torst --timeout 3"
+# при срабатывании события (torst/ssl_err/...).
+DESYNC_ACTIVE="-Kt,h -s0 -o1 -Ar -o1 -At -f-1 --md5sig -r1+s -As,n -Ku -a5 -An"
+DESYNC_FALLBACK=""
 
 HOSTLIST_OPTIONS="-i 127.0.0.1 --port $PORT $DESYNC_ACTIVE $DESYNC_FALLBACK"
 if [ "$METHOD" = "ipset" ]; then

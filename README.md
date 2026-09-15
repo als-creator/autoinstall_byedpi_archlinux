@@ -193,11 +193,11 @@ systemctl --user restart byedpi-hosts byedpi-redirect          # user
 расширения или восстановите готовый бэкап из репозитория. Изменения конфига:
 
 ```bash
-sudo nano /etc/byedpi.conf            # system
-sudo systemctl restart byedpi
+sudo nano /etc/byedpi.conf
+```
 
-nano ~/.config/byedpi.conf            # user
-systemctl --user restart byedpi       # user
+```bash
+sudo systemctl restart byedpi
 ```
 
 ### Смена стратегии desync
@@ -206,16 +206,19 @@ systemctl --user restart byedpi       # user
 стратегии можно взять из файла `Стратегии byedpi.txt` в репозитории —
 подставьте нужную строку в конфиг и перезапустите сервис.
 
-Рабочая стратегия по умолчанию (проверена на YouTube/Discord/X.com):
+Стратегия по умолчанию:
 
 ```
--Kt,h --tlsrec 1+s --disorder 1 --auto=torst --timeout 3
+-Kt,h -s0 -o1 -Ar -o1 -At -f-1 --md5sig -r1+s -As,n -Ku -a5 -An
 ```
 
-- `--tlsrec 1+s` — разбивает TLS-запись в середине SNI (DPI не может прочитать SNI);
-- `--disorder 1` — первая часть отсылается с TTL=1 (не доходит, ОС повторяет);
-- `--auto=torst --timeout 3` — при таймауте/сбросе применяются опции из группы,
-  что позволяет подстраиваться под конкретного провайдера.
+- `-s0 -o1` — отключение шифрования и отправка первой части (4 байта) сразу;
+- `-Ar ... -At` — группы повторения при сбросе/таймауте;
+- `-f-1 --md5sig` — отправка заведомо лишней части с MD5-подписью;
+- `-r1+s` — повтор первой части с задержкой;
+- `-As,n` — группа повторения с беспорядочной отправкой;
+- `-Ku -a5` — отключение UDP и задержка повторов 5 мс;
+- `-An` — отсутствие активной группы по умолчанию.
 
 ### Отключение YouTube через QUIC
 

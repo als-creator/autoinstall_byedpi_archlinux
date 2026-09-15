@@ -8,7 +8,10 @@
 #     redirect = неожиданный HTTP Redirect
 #     ssl_err  = нет корректного ServerHello
 #
-# БАЗОВАЯ РАБОЧАЯ СТРАТЕГИЯ (проверена в РФ на YouTube/Discord/X.com):
+# БАЗОВАЯ СТРАТЕГИЯ (по умолчанию в установщике):
+#   -Kt,h -s0 -o1 -Ar -o1 -At -f-1 --md5sig -r1+s -As,n -Ku -a5 -An
+#
+# Также пробовались (проверено на YouTube/Discord/X.com, подходит для ТСПУ):
 #   -Kt,h --tlsrec 1+s --disorder 1 --auto=torst --timeout 3
 #
 # РЕКОМЕНДУЕМЫЕ КОМБИНАЦИИ ДЛЯ LINUX (из документации byedpi):
