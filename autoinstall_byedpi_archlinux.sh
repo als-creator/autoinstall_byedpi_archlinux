@@ -175,28 +175,29 @@ sctl(){
 # ---------------------------------------------------------------------------
 cmd_status(){
   echo "=== ByeDPI: статус ==="
-  if [ "$SCOPE" = "user" ]; then
-    # ipset: демон живёт как root-юнит byedpi-<uid>, не как user byedpi.service
-    if [ -f "/etc/systemd/system/byedpi-$UID_NUM.service" ]; then
-      echo "-- демон transparent (root): byedpi-$UID_NUM.service --"
-      sudo systemctl --no-pager status "byedpi-$UID_NUM" 2>/dev/null | head -8 || true
-      if [ -f "/etc/systemd/system/byedpi-redirect-$UID_NUM.service" ]; then
-        echo "-- правила REDIRECT: byedpi-redirect-$UID_NUM.service --"
-        sudo systemctl --no-pager status "byedpi-redirect-$UID_NUM" 2>/dev/null | head -4 || true
-      fi
-    else
-      echo "-- демон SOCKS (user unit): byedpi.service --"
-      systemctl --user --no-pager status byedpi 2>/dev/null | head -8 || true
-    fi
-  else
-    [ -f /etc/systemd/system/byedpi.service ] \
-      && echo "-- демон: /etc/systemd/system/byedpi.service --" \
-      || echo "-- демон НЕ установлен (в /etc/systemd/system нет byedpi.service) --"
+  # auto-detect: что реально работает?
+  # 1) user+ipset: root-юнит byedpi-<uid>.service
+  if [ -f "/etc/systemd/system/byedpi-$UID_NUM.service" ]; then
+    echo "-- transparent (root): byedpi-$UID_NUM.service --"
+    sudo systemctl --no-pager status "byedpi-$UID_NUM" 2>/dev/null | head -8 || true
+    [ -f "/etc/systemd/system/byedpi-redirect-$UID_NUM.service" ] && {
+      echo "-- REDIRECT: byedpi-redirect-$UID_NUM.service --"
+      sudo systemctl --no-pager status "byedpi-redirect-$UID_NUM" 2>/dev/null | head -4 || true
+    }
+  # 2) system: byedpi.service в /etc/systemd/system
+  elif [ -f /etc/systemd/system/byedpi.service ]; then
+    echo "-- system: byedpi.service (override) --"
     sudo systemctl --no-pager status byedpi 2>/dev/null | head -8 || true
     [ -f /etc/systemd/system/byedpi-redirect.service ] && {
-      echo "-- правила REDIRECT: byedpi-redirect.service --"
+      echo "-- REDIRECT: byedpi-redirect.service --"
       sudo systemctl --no-pager status byedpi-redirect 2>/dev/null | head -4 || true
     }
+  # 3) user extension: user byedpi.service
+  elif [ -f "$HOME/.config/systemd/user/byedpi.service" ]; then
+    echo "-- SOCKS (user): byedpi.service --"
+    systemctl --user --no-pager status byedpi 2>/dev/null | head -8 || true
+  else
+    echo "ByeDPI НЕ установлен (ни один юнит не найден)"
   fi
   [ -f "$HOME/.config/byedpi.conf" ]    && echo "user config:   $HOME/.config/byedpi.conf"
   [ -f "$HOME/.config/byedpi-hosts.txt" ] && echo "user hostlist: $HOME/.config/byedpi-hosts.txt"
