@@ -176,9 +176,27 @@ sctl(){
 cmd_status(){
   echo "=== ByeDPI: статус ==="
   if [ "$SCOPE" = "user" ]; then
-    systemctl --user --no-pager status byedpi 2>/dev/null | head -8 || true
+    # ipset: демон живёт как root-юнит byedpi-<uid>, не как user byedpi.service
+    if [ -f "/etc/systemd/system/byedpi-$UID_NUM.service" ]; then
+      echo "-- демон transparent (root): byedpi-$UID_NUM.service --"
+      sudo systemctl --no-pager status "byedpi-$UID_NUM" 2>/dev/null | head -8 || true
+      if [ -f "/etc/systemd/system/byedpi-redirect-$UID_NUM.service" ]; then
+        echo "-- правила REDIRECT: byedpi-redirect-$UID_NUM.service --"
+        sudo systemctl --no-pager status "byedpi-redirect-$UID_NUM" 2>/dev/null | head -4 || true
+      fi
+    else
+      echo "-- демон SOCKS (user unit): byedpi.service --"
+      systemctl --user --no-pager status byedpi 2>/dev/null | head -8 || true
+    fi
   else
+    [ -f /etc/systemd/system/byedpi.service ] \
+      && echo "-- демон: /etc/systemd/system/byedpi.service --" \
+      || echo "-- демон НЕ установлен (в /etc/systemd/system нет byedpi.service) --"
     sudo systemctl --no-pager status byedpi 2>/dev/null | head -8 || true
+    [ -f /etc/systemd/system/byedpi-redirect.service ] && {
+      echo "-- правила REDIRECT: byedpi-redirect.service --"
+      sudo systemctl --no-pager status byedpi-redirect 2>/dev/null | head -4 || true
+    }
   fi
   [ -f "$HOME/.config/byedpi.conf" ]    && echo "user config:   $HOME/.config/byedpi.conf"
   [ -f "$HOME/.config/byedpi-hosts.txt" ] && echo "user hostlist: $HOME/.config/byedpi-hosts.txt"
