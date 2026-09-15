@@ -51,15 +51,22 @@ curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_arch
 
 С флагами:
 
+Для всех пользователей, с SOCKS-прокси для расширения браузера:
+
 ```bash
-# для всех пользователей, SOCKS-прокси для расширения браузера
-curl -fsSL .../autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /tmp/byedpi-install.sh --system --extension
+curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /tmp/byedpi-install.sh --system --extension
+```
 
-# для всех пользователей, без расширений (только домены из hostlist)
-curl -fsSL .../autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /tmp/byedpi-install.sh --system --ipset
+Для всех пользователей, без расширений (только домены из hostlist):
 
-# только для текущего пользователя, без расширений
-curl -fsSL .../autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /tmp/byedpi-install.sh --user --ipset
+```bash
+curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /tmp/byedpi-install.sh --system --ipset
+```
+
+Только для текущего пользователя, без расширений:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /tmp/byedpi-install.sh --user --ipset
 ```
 
 Старые короткие флаги работают как раньше: `--transparent` = `--system --ipset`,
