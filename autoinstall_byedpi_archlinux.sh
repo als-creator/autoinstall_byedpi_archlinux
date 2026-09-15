@@ -158,8 +158,11 @@ fi
 # при срабатывании события (torst/ssl_err/...). Раньше активных опций почти
 # не было (-s0 -o1), а fake/disorder висели за --auto и почти никогда не
 # применялись — поэтому «ни один конфиг не работал».
-DESYNC_ACTIVE="-Kt,h --fake -1 --md5sig --disorder 1 --oob 3+s"
-DESYNC_FALLBACK="--auto=torst,ssl_err --fake -1 --ttl 5"
+# АКТИВНАЯ стратегия — работает на практике для YouTube/Discord/X (проверено):
+#   --tlsrec 1+s разбивает TLS-запись в середине SNI (DPI не читает SNI);
+#   --auto=torst --timeout 3 реагирует на сброс/таймаут и включает --disorder 1.
+DESYNC_ACTIVE="-Kt,h --tlsrec 1+s --disorder 1"
+DESYNC_FALLBACK="--auto=torst --timeout 3"
 
 HOSTLIST_OPTIONS="-i 127.0.0.1 --port $PORT $DESYNC_ACTIVE $DESYNC_FALLBACK"
 if [ "$METHOD" = "ipset" ]; then

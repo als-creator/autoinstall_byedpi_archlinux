@@ -7,11 +7,9 @@
 #     torst    = таймаут/сброс после первого запроса
 #     redirect = неожиданный HTTP Redirect
 #     ssl_err  = нет корректного ServerHello
-#   Поэтому стратегии вида "-s0 -o1 -Ar ... -At -f-1 ..." почти не работают:
-#   сильные приёмы там находятся в группах "по событию".
 #
-# Базовая рабочая стратегия, используемая установщиком:
-#   -Kt,h --fake -1 --md5sig --disorder 1 --oob 3+s --auto=torst,ssl_err --fake -1 --ttl 5
+# БАЗОВАЯ РАБОЧАЯ СТРАТЕГИЯ (проверена в РФ на YouTube/Discord/X.com):
+#   -Kt,h --tlsrec 1+s --disorder 1 --auto=torst --timeout 3
 #
 # РЕКОМЕНДУЕМЫЕ КОМБИНАЦИИ ДЛЯ LINUX (из документации byedpi):
 #   --fake -1 --md5sig

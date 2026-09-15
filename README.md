@@ -74,13 +74,13 @@ curl -fsSL .../autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /
 ### Статус
 
 ```bash
-sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --status
+curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-status.sh && sh /tmp/byedpi-status.sh --status
 ```
 
 ### Удаление (полное отключение)
 
 ```bash
-sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --off
+curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-off.sh && sh /tmp/byedpi-off.sh --off
 ```
 
 `--off` останавливает и удаляет сервисы, таймеры и правила iptables/ipset для
@@ -89,10 +89,19 @@ sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi
 ### Сервис вручную
 
 ```bash
-sudo systemctl start byedpi       # запуск
-sudo systemctl restart byedpi     # перезапуск после смены настроек
-sudo systemctl status byedpi      # статус
-sudo systemctl stop byedpi        # остановка
+sudo systemctl start byedpi
+```
+
+```bash
+sudo systemctl restart byedpi
+```
+
+```bash
+sudo systemctl status byedpi
+```
+
+```bash
+sudo systemctl stop byedpi
 ```
 
 В user-режиме — те же команды, но для systemd-user без sudo:
@@ -189,6 +198,22 @@ systemctl --user restart byedpi       # user
 Параметры стратегии лежат в файле `BYEDPI_OPTIONS` внутри конфига. Готовые
 стратегии можно взять из файла `Стратегии byedpi.txt` в репозитории —
 подставьте нужную строку в конфиг и перезапустите сервис.
+
+Рабочая стратегия по умолчанию (проверена на YouTube/Discord/X.com):
+
+```
+-Kt,h --tlsrec 1+s --disorder 1 --auto=torst --timeout 3
+```
+
+- `--tlsrec 1+s` — разбивает TLS-запись в середине SNI (DPI не может прочитать SNI);
+- `--disorder 1` — первая часть отсылается с TTL=1 (не доходит, ОС повторяет);
+- `--auto=torst --timeout 3` — при таймауте/сбросе применяются опции из группы,
+  что позволяет подстраиваться под конкретного провайдера.
+
+### Отключение YouTube через QUIC
+
+Если YouTube грузится, но видео не воспроизводится — отключите QUIC
+(`chrome://flags/#enable-quic`), т.к. прозрачный режим перенаправляет только TCP.
 
 ---
 
