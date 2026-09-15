@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 # ByeDPI: применить desync-обработку только к доменам из hostlist (как zapret).
 # Резолвит домены из /etc/byedpi-hosts.txt в IP и кладёт их в ipset BYEDPI_HOSTS.
 # Правила iptables (byedpi-redirect.service) матчат REDIRECT по этому ipset.
-set -e
+set -u
 
 SET=BYEDPI_HOSTS
 LIST=/etc/byedpi-hosts.txt

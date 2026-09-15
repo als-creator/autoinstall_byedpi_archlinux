@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # ByeDPI installer (ArchLinux/EndeavourOS)
 #
@@ -24,44 +24,69 @@
 #     SOCKS-прокси 127.0.0.1:PORT, конфигурируется в браузерном расширении
 #     (FoxyProxy / SmartProxy / Proxy SwitchyOmega 3). Root не нужен.
 #
-set -e
+# Скрипт написан на POSIX sh (работает в bash, dash, ash, zsh).
+# Двоичные опции ByeDPI: опции, перечисленные В ПРЕДЕЛАХ одной
+# группы --auto, применяются только при срабатывании триггера этой группы.
+# Поэтому активная стратегия (fake/disorder/oob) ставится ДО первого --auto.
+#
+set -u
 
-die(){ echo "[ERROR] $*" >&2; exit 1; }
-log(){ echo "[OK] $*"; }
-warn(){ echo "[WARN] $*"; }
+usage(){
+  cat <<EOF
+Использование: $0 [--system|--user] [--ipset|--extension] [--off|--status] [--port N]
+  --system        установить для всех пользователей (конфиг /etc/byedpi.conf)
+  --user          установить только для текущего пользователя
+  --ipset         метод ipset: только домены из hostlist, без расширений
+  --extension     метод extension: SOCKS-прокси для браузерного расширения
+  --off | --remove  полностью отключить/удалить сервисы и правила
+  --status|--info   показать текущее состояние
+  --port N        изменить порт
+  --socks         = --system --extension (старая совместимость)
+  --transparent   = --system --ipset (старая совместимость)
+  --transparent-off = --off
+EOF
+  exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Логирование (стиль autoinstall_zapret)
+# ---------------------------------------------------------------------------
+log_ok(){  echo "[OK] $*"; }
+log_warn(){ echo "[WARN] $*"; }
+log_err(){ echo "[ERROR] $*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Парсинг аргументов
 # ---------------------------------------------------------------------------
-SCOPE=""          # system | user
-METHOD=""         # ipset | extension
-ACTION="install"  # install | off | status
+SCOPE=""           # system | user
+METHOD=""          # ipset | extension
+ACTION="install"   # install | off | status
 ARG_PORT=""
 
 for a in "$@"; do
   case "$a" in
-    --system)      SCOPE=system ;;
-    --user)        SCOPE=user ;;
-    --ipset)       METHOD=ipset ;;
-    --extension)   METHOD=extension ;;
-    --off|--remove) ACTION=off ;;
+    --system)        SCOPE=system ;;
+    --user)          SCOPE=user ;;
+    --ipset)         METHOD=ipset ;;
+    --extension)     METHOD=extension ;;
+    --off|--remove)  ACTION=off ;;
     --status|--info) ACTION=status ;;
-    --help|-h)
-      echo "Использование: $0 [--system|--user] [--ipset|--extension] [--off|--status] [--port N]"
-      exit 0 ;;
-    --port=*)      ARG_PORT="${a#*=}" ;;
-    --socks)       SCOPE=system; METHOD=extension ;;  # совместимость со старым
-    --transparent) SCOPE=system; METHOD=ipset ;;      # совместимость со старым
+    --help|-h)       usage ;;
+    --port=*)        ARG_PORT="${a#*=}" ;;
+    --socks)         SCOPE=system; METHOD=extension ;;
+    --transparent)   SCOPE=system; METHOD=ipset ;;
     --transparent-off) ACTION=off ;;
-    *) die "Неизвестный аргумент: $a (см. $0 --help)" ;;
+    *) log_err "Неизвестный аргумент: $a (см. $0 --help)" ;;
   esac
 done
 
 # ---------------------------------------------------------------------------
 # Проверка окружения
 # ---------------------------------------------------------------------------
-[ "$EUID" -eq 0 ] && die "Не запускайте скрипт от root."
-command -v sudo >/dev/null 2>&1 || die "sudo не установлен"
+if [ "$(id -u)" -eq 0 ]; then
+  log_err "Не запускайте скрипт от root."
+fi
+command -v sudo >/dev/null 2>&1 || log_err "sudo не установлен"
 
 if [ "$ACTION" = "install" ]; then
   if [ -z "$SCOPE" ] && [ -t 0 ]; then
@@ -87,20 +112,27 @@ UID_NUM=$(id -u)
 # ---------------------------------------------------------------------------
 # Пакеты
 # ---------------------------------------------------------------------------
-command -v yay >/dev/null 2>&1 || {
-  warn "yay не найден — собираю из AUR..."
-  cd /tmp
-  rm -rf yay
-  git clone https://aur.archlinux.org/yay.git
-  cd yay
-  makepkg -si --noconfirm
-  cd ..
-  rm -rf yay
+install_packages(){
+  if ! command -v yay >/dev/null 2>&1; then
+    log_warn "yay не найден — собираю из AUR..."
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+    git clone https://aur.archlinux.org/yay.git "$tmpdir/yay"
+    cd "$tmpdir/yay" || log_err "Не удалось зайти в $tmpdir/yay"
+    makepkg -si --noconfirm
+    cd /tmp
+  fi
+  if ! pacman -Q byedpi-bin >/dev/null 2>&1; then
+    log_ok "Устанавливаю byedpi-bin через yay..."
+    yay -Sy --noconfirm byedpi-bin
+  fi
+  if [ "$METHOD" = "ipset" ]; then
+    if ! pacman -Q ipset >/dev/null 2>&1; then
+      log_ok "Устанавливаю ipset..."
+      sudo pacman -S --noconfirm --needed ipset
+    fi
+  fi
 }
-pacman -Q byedpi-bin >/dev/null 2>&1 || yay -Sy --noconfirm byedpi-bin
-if [ "$METHOD" = "ipset" ]; then
-  pacman -Q ipset >/dev/null 2>&1 || sudo pacman -S --noconfirm --needed ipset
-fi
 
 # ---------------------------------------------------------------------------
 # Значения по режиму
@@ -109,38 +141,59 @@ UP=/usr/local/bin/byedpi-hosts-update.sh
 if [ "$SCOPE" = "user" ]; then
   CFG="$HOME/.config/byedpi.conf"
   HOSTS="$HOME/.config/byedpi-hosts.txt"
-  DAEMON_CTL=(systemctl --user)
-  IHOSTS="BYEDPI_$UID_NUM"                       # свой ipset на пользователя
+  IHOSTS="BYEDPI_$UID_NUM"                         # свой ipset на пользователя
   UP="/usr/local/bin/byedpi-hosts-update-$UID_NUM.sh"  # root-обёртка, читает ~/.config
   PORT=$(( 14228 + UID_NUM - 1000 ))
   [ -n "$ARG_PORT" ] && PORT="$ARG_PORT"
 else
   CFG="/etc/byedpi.conf"
   HOSTS="/etc/byedpi-hosts.txt"
-  DAEMON_CTL=(sudo systemctl)
   IHOSTS="BYEDPI_HOSTS"
   PORT="${ARG_PORT:-14228}"
 fi
 
-HOSTLIST_OPTIONS="-i 127.0.0.1 --port $PORT"
+# Параметры демона.
+# ВАЖНО: в ByeDPI опция --auto разделяет опции на группы. Опции ДО первого
+# --auto применяются ВСЕГДА (активная стратегия), опции ПОСЛЕ --auto — только
+# при срабатывании события (torst/ssl_err/...). Раньше активных опций почти
+# не было (-s0 -o1), а fake/disorder висели за --auto и почти никогда не
+# применялись — поэтому «ни один конфиг не работал».
+DESYNC_ACTIVE="-Kt,h --fake -1 --md5sig --disorder 1 --oob 3+s"
+DESYNC_FALLBACK="--auto=torst,ssl_err --fake -1 --ttl 5"
+
+HOSTLIST_OPTIONS="-i 127.0.0.1 --port $PORT $DESYNC_ACTIVE $DESYNC_FALLBACK"
 if [ "$METHOD" = "ipset" ]; then
-  HOSTLIST_OPTIONS+=" -E"
+  HOSTLIST_OPTIONS="-E $HOSTLIST_OPTIONS"
 fi
-HOSTLIST_OPTIONS+=" -Kt,h -s0 -o1 -Ar -o1 -At -f-1 --md5sig -r1+s -As,n -Ku -a5 -An"
+
+# ---------------------------------------------------------------------------
+# systemctl-обёртка (POSIX: массив не используем)
+# ---------------------------------------------------------------------------
+sctl(){
+  if [ "$SCOPE" = "user" ]; then
+    systemctl --user "$@"
+  else
+    sudo systemctl "$@"
+  fi
+}
 
 # ---------------------------------------------------------------------------
 # off / status
 # ---------------------------------------------------------------------------
-if [ "$ACTION" = "status" ]; then
+cmd_status(){
   echo "=== ByeDPI: статус ==="
-  ${DAEMON_CTL[@]} --no-pager status byedpi 2>/dev/null | head -8 || true
+  if [ "$SCOPE" = "user" ]; then
+    systemctl --user --no-pager status byedpi 2>/dev/null | head -8 || true
+  else
+    sudo systemctl --no-pager status byedpi 2>/dev/null | head -8 || true
+  fi
   [ -f "$HOME/.config/byedpi.conf" ]    && echo "user config:   $HOME/.config/byedpi.conf"
   [ -f "$HOME/.config/byedpi-hosts.txt" ] && echo "user hostlist: $HOME/.config/byedpi-hosts.txt"
   [ -f /etc/byedpi.conf ]  && echo "system config:  /etc/byedpi.conf"
   exit 0
-fi
+}
 
-if [ "$ACTION" = "off" ]; then
+cmd_off(){
   echo "=== Отключение ByeDPI ==="
   systemctl --user disable --now byedpi.service 2>/dev/null || true
   systemctl --user disable --now byedpi-hosts.timer 2>/dev/null || true
@@ -150,23 +203,24 @@ if [ "$ACTION" = "off" ]; then
   rm -f "$HOME/.config/systemd/user/byedpi-hosts.timer"
   systemctl --user daemon-reload 2>/dev/null || true
 
-  for n in "byedpi-redirect" "byedpi-redirect-$UID_NUM" "byedpi-hosts.timer" "byedpi-hosts-$UID_NUM.timer"; do
+  for n in "byedpi-redirect" "byedpi-redirect-$UID_NUM" \
+           "byedpi-hosts.timer" "byedpi-hosts-$UID_NUM.timer"; do
     sudo systemctl disable --now "$n" 2>/dev/null || true
   done
   sudo systemctl stop byedpi-hosts.service 2>/dev/null || true
   sudo systemctl stop "byedpi-hosts-$UID_NUM.service" 2>/dev/null || true
   sudo systemctl disable --now byedpi 2>/dev/null || true
 
-  # правила
   sudo iptables -t nat -D OUTPUT -j BYEDPI 2>/dev/null || true
-  sudo iptables -t nat -D OUTPUT -j BYEDPI_$UID_NUM 2>/dev/null || true
+  sudo iptables -t nat -D OUTPUT -j "BYEDPI_$UID_NUM" 2>/dev/null || true
   sudo iptables -t nat -F BYEDPI 2>/dev/null || true
-  sudo iptables -t nat -F BYEDPI_$UID_NUM 2>/dev/null || true
+  sudo iptables -t nat -F "BYEDPI_$UID_NUM" 2>/dev/null || true
   sudo iptables -t nat -X BYEDPI 2>/dev/null || true
-  sudo iptables -t nat -X BYEDPI_$UID_NUM 2>/dev/null || true
+  sudo iptables -t nat -X "BYEDPI_$UID_NUM" 2>/dev/null || true
   sudo ipset destroy BYEDPI_HOSTS 2>/dev/null || true
-  sudo ipset destroy BYEDPI_$UID_NUM 2>/dev/null || true
-  sudo rm -f /etc/systemd/system/byedpi-redirect.service \
+  sudo ipset destroy "BYEDPI_$UID_NUM" 2>/dev/null || true
+  sudo rm -f /etc/systemd/system/byedpi.service \
+             /etc/systemd/system/byedpi-redirect.service \
              /etc/systemd/system/byedpi-redirect-$UID_NUM.service \
              /etc/systemd/system/byedpi-hosts.timer \
              /etc/systemd/system/byedpi-hosts-$UID_NUM.timer \
@@ -175,42 +229,130 @@ if [ "$ACTION" = "off" ]; then
   sudo systemctl daemon-reload 2>/dev/null || true
   echo "ByeDPI отключён. Конфиги не удалялись: $HOME/.config/byedpi.conf, /etc/byedpi.conf"
   exit 0
-fi
+}
 
 # ---------------------------------------------------------------------------
 # Конфиг + hostlist
 # ---------------------------------------------------------------------------
-mkdir -p "$HOME/.config"
-if [ "$SCOPE" = "user" ]; then
-  mkdir -p "$HOME/.config/systemd/user"
-  echo "BYEDPI_OPTIONS=\"$HOSTLIST_OPTIONS\"" > "$CFG"
-else
-  echo "BYEDPI_OPTIONS=\"$HOSTLIST_OPTIONS\"" | sudo tee "$CFG" > /dev/null
-fi
-log "Конфиг: $CFG"
-
-HOSTS_LIST=$'# ByeDPI hostlist — домены, к которым применяется desync.\n# Формат: один домен на строку, строки с # игнорируются.\n# Правка: отредактируйте и перезапустите сервисы (см. README).\nyoutube.com\nyoutube-nocookie.com\nyoutu.be\nytimg.com\nyt3.googleusercontent.com\nggpht.com\ngooglevideo.com\ngoogleusercontent.com\ngvt1.com\nplay.google.com\naccounts.google.com\ngooglevideo.net\nfacebook.com\nfbcdn.net\ninstagram.com\ncdninstagram.com\ntwitter.com\ntwimg.com\nt.co\nx.com\nrutracker.org\nrutracker.cc\nrutor.info\nnnmclub.to\ndiscord.com\ndiscord.co\ndiscord.gg\ndiscordapp.com\ndiscordapp.net\ndiscordcdn.com\ndiscordstatus.com\ndiscord.media\ndis.gd\nhabr.com\nmedium.com\nproton.me\narchive.org\nsourceforge.net\n'
-if [ ! -f "$HOSTS" ]; then
+write_config(){
+  mkdir -p "$HOME/.config"
   if [ "$SCOPE" = "user" ]; then
-    printf '%s' "$HOSTS_LIST" > "$HOSTS"
+    mkdir -p "$HOME/.config/systemd/user"
+    echo "BYEDPI_OPTIONS=\"$HOSTLIST_OPTIONS\"" > "$CFG"
   else
-    printf '%s' "$HOSTS_LIST" | sudo tee "$HOSTS" > /dev/null
+    echo "BYEDPI_OPTIONS=\"$HOSTLIST_OPTIONS\"" | sudo tee "$CFG" > /dev/null
   fi
-  log "Создан hostlist: $HOSTS"
-else
-  warn "Hostlist уже есть, не перезаписан: $HOSTS"
-fi
+  log_ok "Конфиг: $CFG"
+}
+
+write_hostlist(){
+  if [ ! -f "$HOSTS" ]; then
+    if [ "$SCOPE" = "user" ]; then
+      cat > "$HOSTS" <<'EOL'
+# ByeDPI hostlist — домены, к которым применяется desync.
+# Формат: один домен на строку, строки с # игнорируются.
+# Правка: отредактируйте и перезапустите сервисы (см. README).
+youtube.com
+youtube-nocookie.com
+youtu.be
+ytimg.com
+yt3.googleusercontent.com
+ggpht.com
+googlevideo.com
+googleusercontent.com
+gvt1.com
+play.google.com
+accounts.google.com
+googlevideo.net
+facebook.com
+fbcdn.net
+instagram.com
+cdninstagram.com
+twitter.com
+twimg.com
+t.co
+x.com
+rutracker.org
+rutracker.cc
+rutor.info
+nnmclub.to
+discord.com
+discord.co
+discord.gg
+discordapp.com
+discordapp.net
+discordcdn.com
+discordstatus.com
+discord.media
+dis.gd
+habr.com
+medium.com
+proton.me
+archive.org
+sourceforge.net
+EOL
+    else
+      sudo tee "$HOSTS" > /dev/null <<'EOL'
+# ByeDPI hostlist — домены, к которым применяется desync.
+# Формат: один домен на строку, строки с # игнорируются.
+# Правка: отредактируйте и перезапустите сервисы (см. README).
+youtube.com
+youtube-nocookie.com
+youtu.be
+ytimg.com
+yt3.googleusercontent.com
+ggpht.com
+googlevideo.com
+googleusercontent.com
+gvt1.com
+play.google.com
+accounts.google.com
+googlevideo.net
+facebook.com
+fbcdn.net
+instagram.com
+cdninstagram.com
+twitter.com
+twimg.com
+t.co
+x.com
+rutracker.org
+rutracker.cc
+rutor.info
+nnmclub.to
+discord.com
+discord.co
+discord.gg
+discordapp.com
+discordapp.net
+discordcdn.com
+discordstatus.com
+discord.media
+dis.gd
+habr.com
+medium.com
+proton.me
+archive.org
+sourceforge.net
+EOL
+    fi
+    log_ok "Создан hostlist: $HOSTS"
+  else
+    log_warn "Hostlist уже есть, не перезаписан: $HOSTS"
+  fi
+}
 
 # ---------------------------------------------------------------------------
-# Скрипт обновления hostlist -> ipset (root, читает user/system hostlist)
+# Скрипт обновления hostlist -> ipset (root)
 # ---------------------------------------------------------------------------
-if [ "$METHOD" = "ipset" ]; then
+write_hosts_updater(){
+  local inst_path="$1" set_name="$2" list_path="$3"
   cat > /tmp/byedpi-up-sh.sh <<UP
-#!/bin/bash
-# Автосгенерировано установщиком ByeDPI. Заполняет ipset $IHOSTS из $HOSTS.
-set -e
-SET="$IHOSTS"
-LIST="$HOSTS"
+#!/bin/sh
+# Автосгенерировано установщиком ByeDPI. Заполняет ipset $set_name из $list_path.
+set -u
+SET="$set_name"
+LIST="$list_path"
 [ -f "\$LIST" ] || { echo "Нет hostlist: \$LIST" >&2; exit 0; }
 ipset create "\$SET" hash:ip 2>/dev/null || true
 ipset flush "\$SET"
@@ -225,18 +367,19 @@ members=\$(ipset list "\$SET" 2>/dev/null | grep -cE '^[0-9a-fA-F:\.]+\$' || tru
 echo "ByeDPI: IP в ipset \$SET: \$members"
 exit 0
 UP
-  sudo install -m 755 /tmp/byedpi-up-sh.sh "$UP"
+  sudo install -m 755 /tmp/byedpi-up-sh.sh "$inst_path"
   rm -f /tmp/byedpi-up-sh.sh
-  log "Скрипт обновления ipset: $UP"
-fi
+  log_ok "Скрипт обновления ipset: $inst_path"
+}
 
 # ---------------------------------------------------------------------------
 # systemd-юниты
 # ---------------------------------------------------------------------------
-UCFG="$HOME/.config"
-if [ "$SCOPE" = "user" ]; then
-  # ==== user scope ====
-  cat > "$HOME/.config/systemd/user/byedpi.service" <<EOF
+write_units(){
+  UCFG="$HOME/.config"
+  if [ "$SCOPE" = "user" ]; then
+    # ==== user scope ====
+    cat > "$HOME/.config/systemd/user/byedpi.service" <<EOF
 [Unit]
 Description=ByeDPI (user $USER)
 After=network-online.target
@@ -252,9 +395,9 @@ Restart=on-failure
 WantedBy=default.target
 EOF
 
-  if [ "$METHOD" = "ipset" ]; then
-    # ipset требует root: системные unit-ы, но привязаны к uid и читают hostlist юзера
-    sudo tee "/etc/systemd/system/byedpi-hosts-$UID_NUM.service" >/dev/null <<EOF
+    if [ "$METHOD" = "ipset" ]; then
+      # ipset требует root: системные unit-ы, но читают hostlist юзера
+      sudo tee "/etc/systemd/system/byedpi-hosts-$UID_NUM.service" >/dev/null <<EOF
 [Unit]
 Description=ByeDPI hostlist -> ipset (uid $UID_NUM)
 After=network-online.target
@@ -267,7 +410,7 @@ ExecStart=$UP
 [Install]
 WantedBy=multi-user.target
 EOF
-    sudo tee "/etc/systemd/system/byedpi-hosts-$UID_NUM.timer" >/dev/null <<EOF
+      sudo tee "/etc/systemd/system/byedpi-hosts-$UID_NUM.timer" >/dev/null <<EOF
 [Unit]
 Description=ByeDPI hostlist ipset refresh (uid $UID_NUM)
 
@@ -279,7 +422,7 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 EOF
-    sudo tee "/etc/systemd/system/byedpi-redirect-$UID_NUM.service" >/dev/null <<EOF
+      sudo tee "/etc/systemd/system/byedpi-redirect-$UID_NUM.service" >/dev/null <<EOF
 [Unit]
 Description=ByeDPI REDIRECT (uid $UID_NUM)
 Wants=byedpi.service
@@ -303,20 +446,40 @@ ExecStop=/bin/sh -c 'iptables -t nat -D OUTPUT -j $IHOSTS 2>/dev/null || true; i
 [Install]
 WantedBy=multi-user.target
 EOF
-    sudo systemctl daemon-reload
-    sudo systemctl enable --now "byedpi-hosts-$UID_NUM.timer" >/dev/null 2>&1 || warn "Не удалось включить таймер hostlist"
-    sudo "$UP" || warn "Не удалось заполнить ipset сразу"
-    sudo systemctl enable --now "byedpi-redirect-$UID_NUM.service" >/dev/null 2>&1 || warn "Не удалось включить REDIRECT"
-  fi
+      sudo systemctl daemon-reload
+      sudo systemctl enable --now "byedpi-hosts-$UID_NUM.timer" >/dev/null 2>&1 || log_warn "Не удалось включить таймер hostlist"
+      sudo "$UP" || log_warn "Не удалось заполнить ipset сразу"
+      sudo systemctl enable --now "byedpi-redirect-$UID_NUM.service" >/dev/null 2>&1 || log_warn "Не удалось включить REDIRECT"
+    fi
 
-  systemctl --user daemon-reload 2>/dev/null || true
-  systemctl --user enable --now byedpi.service >/dev/null 2>&1 || warn "user unit не запустился сразу (включится при входе)"
-  log "Юзер-сервис: ~/.config/systemd/user/byedpi.service"
-else
-  # ==== system scope ====
-  sudo systemctl enable --now byedpi >/dev/null 2>&1 || true
-  if [ "$METHOD" = "ipset" ]; then
-    sudo tee /etc/systemd/system/byedpi-hosts.service >/dev/null <<EOF
+    systemctl --user daemon-reload 2>/dev/null || true
+    systemctl --user enable --now byedpi.service >/dev/null 2>&1 || log_warn "user unit не запустился сразу (включится при входе)"
+    log_ok "Юзер-сервис: ~/.config/systemd/user/byedpi.service"
+  else
+    # ==== system scope ====
+    # Свой юнит в /etc/systemd/system перекрывает пакетный /usr/lib (у него
+    # нет TYPE=/etc/byedpi.conf для ipset и нет настройки --transparent).
+    sudo tee /etc/systemd/system/byedpi.service >/dev/null <<EOF
+[Unit]
+Description=ByeDPI
+Documentation=https://github.com/hufrea/byedpi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ciadpi \$BYEDPI_OPTIONS
+EnvironmentFile=/etc/byedpi.conf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now byedpi >/dev/null 2>&1 || log_warn "byedpi не запустился, см. sudo journalctl -u byedpi"
+    if [ "$METHOD" = "ipset" ]; then
+      sudo tee /etc/systemd/system/byedpi-hosts.service >/dev/null <<EOF
 [Unit]
 Description=ByeDPI hostlist -> ipset update
 After=network-online.target
@@ -329,7 +492,7 @@ ExecStart=$UP
 [Install]
 WantedBy=multi-user.target
 EOF
-    sudo tee /etc/systemd/system/byedpi-hosts.timer >/dev/null <<EOF
+      sudo tee /etc/systemd/system/byedpi-hosts.timer >/dev/null <<EOF
 [Unit]
 Description=ByeDPI hostlist ipset refresh
 
@@ -341,7 +504,7 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 EOF
-    sudo tee /etc/systemd/system/byedpi-redirect.service >/dev/null <<EOF
+      sudo tee /etc/systemd/system/byedpi-redirect.service >/dev/null <<EOF
 [Unit]
 Description=ByeDPI transparent redirect rules (hostlist)
 Wants=byedpi.service byedpi-hosts.service
@@ -366,30 +529,52 @@ ExecStop=/bin/sh -c 'iptables -t nat -D OUTPUT -j $IHOSTS 2>/dev/null || true; i
 [Install]
 WantedBy=multi-user.target
 EOF
-    sudo systemctl daemon-reload
-    sudo systemctl enable --now byedpi-hosts.timer >/dev/null 2>&1 || warn "Не удалось включить таймер hostlist"
-    sudo "$UP" || warn "Не удалось заполнить ipset сразу"
-    sudo systemctl enable --now byedpi-redirect >/dev/null 2>&1 || warn "Не удалось включить REDIRECT"
+      sudo systemctl daemon-reload
+      sudo systemctl enable --now byedpi-hosts.timer >/dev/null 2>&1 || log_warn "Не удалось включить таймер hostlist"
+      sudo "$UP" || log_warn "Не удалось заполнить ipset сразу"
+      sudo systemctl enable --now byedpi-redirect >/dev/null 2>&1 || log_warn "Не удалось включить REDIRECT"
+    fi
   fi
-fi
+}
 
 # ---------------------------------------------------------------------------
 # Итог
 # ---------------------------------------------------------------------------
-echo "═══════════════════════════════════════════════════════════"
-echo "  ByeDPI: scope=$SCOPE метод=$METHOD порт=$PORT"
-echo "═══════════════════════════════════════════════════════════"
-echo "Конфиг:   $CFG"
-echo "Hostlist: $HOSTS"
-if [ "$METHOD" = "ipset" ]; then
-  echo "Обрабатываются ТОЛЬКО домены из hostlist (ipset=$IHOSTS)."
-  echo "  Правка: nano $HOSTS; затем $0 --status / перезапуск сервисов."
-  echo "  Обновить ipset вручную: sudo $UP"
-elif [ "$SCOPE" = "system" ]; then
-  echo "SOCKS-прокси: 127.0.0.1:$PORT (расширения FoxyProxy/SmartProxy/SwitchyOmega 3)."
-  echo "Бэкап Omega: ZeroOmegaOptions-*.bak в репозитории."
-else
-  echo "SOCKS-прокси: 127.0.0.1:$PORT (только для этого пользователя)."
-  echo "Настройте расширение на этот порт."
-fi
-[ "$SCOPE" = "user" ] && echo "Автозапуск при входе включён. Для запуска без входа в сессию: sudo loginctl enable-linger $USER"
+show_summary(){
+  echo "═══════════════════════════════════════════════════════════"
+  echo "  ByeDPI: scope=$SCOPE метод=$METHOD порт=$PORT"
+  echo "═══════════════════════════════════════════════════════════"
+  echo "Конфиг:   $CFG"
+  echo "Hostlist: $HOSTS"
+  echo "Стратегия: $DESYNC_ACTIVE $DESYNC_FALLBACK"
+  if [ "$METHOD" = "ipset" ]; then
+    echo "Обрабатываются ТОЛЬКО домены из hostlist (ipset=$IHOSTS)."
+    echo "  Правка: nano $HOSTS; затем $0 --status / перезапуск сервисов."
+    echo "  Обновить ipset вручную: sudo $UP"
+  elif [ "$SCOPE" = "system" ]; then
+    echo "SOCKS-прокси: 127.0.0.1:$PORT (расширения FoxyProxy/SmartProxy/SwitchyOmega 3)."
+    echo "Бэкап Omega: ZeroOmegaOptions-*.bak в репозитории."
+  else
+    echo "SOCKS-прокси: 127.0.0.1:$PORT (только для этого пользователя)."
+    echo "Настройте расширение на этот порт."
+  fi
+  [ "$SCOPE" = "user" ] && echo "Автозапуск при входе включён. Для запуска без входа в сессию: sudo loginctl enable-linger $USER"
+}
+
+# ---------------------------------------------------------------------------
+# Главный запуск
+# ---------------------------------------------------------------------------
+case "$ACTION" in
+  status) cmd_status ;;
+  off)    cmd_off ;;
+  install)
+    install_packages
+    write_config
+    write_hostlist
+    if [ "$METHOD" = "ipset" ]; then
+      write_hosts_updater "$UP" "$IHOSTS" "$HOSTS"
+    fi
+    write_units
+    show_summary
+    ;;
+esac

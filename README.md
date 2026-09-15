@@ -35,33 +35,31 @@ ArchLinux (проверялось на EndeavourOS и Arch Linux).
 
 ## Установка
 
-### Автоматическая установка
+> **Важно:** скрипт работает на POSIX sh (`sh`) — совместим с bash, dash, ash, zsh.
+> Подстановка `<(...)` (process substitution) — это bash/zsh-фича, которая **не
+> работает в POSIX sh/dash**. Поэтому правильный способ запуска — скачать и
+> исполнить:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /tmp/byedpi-install.sh
+```
 
 Скрипт спрашивает два вопроса, а можно сразу задать их флагами (тогда ввод не нужен):
 
 1. Куда установить — `--system` или `--user`.
 2. Как использовать — `--ipset` или `--extension`.
 
-Интерактивно:
-
-```bash
-sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh)
-```
-
 С флагами:
 
 ```bash
-# для всех пользователей, без расширений (только домены из hostlist)
-sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --system --ipset
-
 # для всех пользователей, SOCKS-прокси для расширения браузера
-sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --system --extension
+curl -fsSL .../autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /tmp/byedpi-install.sh --system --extension
+
+# для всех пользователей, без расширений (только домены из hostlist)
+curl -fsSL .../autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /tmp/byedpi-install.sh --system --ipset
 
 # только для текущего пользователя, без расширений
-sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --user --ipset
-
-# только для текущего пользователя, SOCKS-прокси для расширения браузера
-sh <(curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh) --user --extension
+curl -fsSL .../autoinstall_byedpi_archlinux.sh -o /tmp/byedpi-install.sh && sh /tmp/byedpi-install.sh --user --ipset
 ```
 
 Старые короткие флаги работают как раньше: `--transparent` = `--system --ipset`,
