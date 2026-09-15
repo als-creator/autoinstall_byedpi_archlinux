@@ -252,90 +252,126 @@ write_hostlist(){
     if [ "$SCOPE" = "user" ]; then
       cat > "$HOSTS" <<'EOL'
 # ByeDPI hostlist — домены, к которым применяется desync.
+# Список синхронизирован с расширением ZeroOmega (56 доменов).
 # Формат: один домен на строку, строки с # игнорируются.
 # Правка: отредактируйте и перезапустите сервисы (см. README).
+cdnbunny.org
 youtube.com
-youtube-nocookie.com
+googlevideo.com
+play.google.com
+yt3.ggpht.com
 youtu.be
+rutor.info
+rutracker.org
+rutracker.cc
+nnmclub.to
+habr.com
+instagram.com
+archlinuxgui.in
+sourceforge.net
+scontent-hel3-1.cdninstagram.com
+cdninstagram.com
+ntc.party
+discord.com
+discord.gg
+opera.com
+discordapp.com
+discordapp.net
+discord.media
+discord-attachments-uploads-prd.storage.googleapis.com
+dis.gd
+discord.co
+discordcdn.com
+discordstatus.com
+proton.me
+twimg.com
+torproject.org
+archive.org
+web.archive.org
+soundcloud.com
+mullvad.net
+roskomsvoboda.org
+medium.com
+hybrid-analysis.com
+4pda.to
+chatgpt.com
+facebook.com
+bbc.com
+addons.opera.com
+twitter.com
+holod.media
+news.google.com
+flibusta.lib
+flibusta.is
+flibusta.info
+linkedin.com
+t.co
+x.com
 ytimg.com
 yt3.googleusercontent.com
 ggpht.com
-googlevideo.com
-googleusercontent.com
-gvt1.com
-play.google.com
-accounts.google.com
-googlevideo.net
-facebook.com
-fbcdn.net
-instagram.com
-cdninstagram.com
-twitter.com
-twimg.com
-t.co
-x.com
-rutracker.org
-rutracker.cc
-rutor.info
-nnmclub.to
-discord.com
-discord.co
-discord.gg
-discordapp.com
-discordapp.net
-discordcdn.com
-discordstatus.com
-discord.media
-dis.gd
-habr.com
-medium.com
-proton.me
-archive.org
-sourceforge.net
 EOL
     else
       sudo tee "$HOSTS" > /dev/null <<'EOL'
 # ByeDPI hostlist — домены, к которым применяется desync.
+# Список синхронизирован с расширением ZeroOmega (56 доменов).
 # Формат: один домен на строку, строки с # игнорируются.
 # Правка: отредактируйте и перезапустите сервисы (см. README).
+cdnbunny.org
 youtube.com
-youtube-nocookie.com
+googlevideo.com
+play.google.com
+yt3.ggpht.com
 youtu.be
+rutor.info
+rutracker.org
+rutracker.cc
+nnmclub.to
+habr.com
+instagram.com
+archlinuxgui.in
+sourceforge.net
+scontent-hel3-1.cdninstagram.com
+cdninstagram.com
+ntc.party
+discord.com
+discord.gg
+opera.com
+discordapp.com
+discordapp.net
+discord.media
+discord-attachments-uploads-prd.storage.googleapis.com
+dis.gd
+discord.co
+discordcdn.com
+discordstatus.com
+proton.me
+twimg.com
+torproject.org
+archive.org
+web.archive.org
+soundcloud.com
+mullvad.net
+roskomsvoboda.org
+medium.com
+hybrid-analysis.com
+4pda.to
+chatgpt.com
+facebook.com
+bbc.com
+addons.opera.com
+twitter.com
+holod.media
+news.google.com
+flibusta.lib
+flibusta.is
+flibusta.info
+linkedin.com
+t.co
+x.com
 ytimg.com
 yt3.googleusercontent.com
 ggpht.com
-googlevideo.com
-googleusercontent.com
-gvt1.com
-play.google.com
-accounts.google.com
-googlevideo.net
-facebook.com
-fbcdn.net
-instagram.com
-cdninstagram.com
-twitter.com
-twimg.com
-t.co
-x.com
-rutracker.org
-rutracker.cc
-rutor.info
-nnmclub.to
-discord.com
-discord.co
-discord.gg
-discordapp.com
-discordapp.net
-discordcdn.com
-discordstatus.com
-discord.media
-dis.gd
-habr.com
-medium.com
-proton.me
-archive.org
-sourceforge.net
 EOL
     fi
     log_ok "Создан hostlist: $HOSTS"
@@ -364,6 +400,10 @@ while IFS= read -r domain; do
   getent ahosts "\$domain" 2>/dev/null | awk '{print \$1}' | sort -u | while read -r ip; do
     ipset add "\$SET" "\$ip" 2>/dev/null || true
   done
+  # браузер ходит на www.<домен>, IP которого могут отличаться от голого домена
+  case "\$domain" in www.*) ;; *) getent ahosts "www.\$domain" 2>/dev/null | awk '{print \$1}' | sort -u | while read -r ip; do
+      ipset add "\$SET" "\$ip" 2>/dev/null || true
+    done ;; esac
 done < "\$LIST"
 members=\$(ipset list "\$SET" 2>/dev/null | grep -cE '^[0-9a-fA-F:\.]+\$' || true)
 echo "ByeDPI: IP в ipset \$SET: \$members"

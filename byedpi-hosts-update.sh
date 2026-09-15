@@ -19,6 +19,12 @@ while IFS= read -r domain; do
   getent ahosts "$domain" 2>/dev/null | awk '{print $1}' | sort -u | while read -r ip; do
     ipset add "$SET" "$ip" 2>/dev/null || true
   done
+  # браузер ходит на www.<домен>, IP которого могут отличаться от голого домена
+  case "$domain" in www.*) ;; *)
+    getent ahosts "www.$domain" 2>/dev/null | awk '{print $1}' | sort -u | while read -r ip; do
+      ipset add "$SET" "$ip" 2>/dev/null || true
+    done ;;
+  esac
   count=$((count + 1))
 done < "$LIST"
 
