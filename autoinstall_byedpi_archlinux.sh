@@ -156,7 +156,7 @@ fi
 # ВАЖНО: в ByeDPI опция --auto разделяет опции на группы. Опции ДО первого
 # --auto применяются ВСЕГДА (активная стратегия), опции ПОСЛЕ --auto — только
 # при срабатывании события (torst/ssl_err/...).
-DESYNC_ACTIVE="-Kt,h -s0 -o1 -Ar -o1 -At -f-1 --md5sig -r1+s -As,n -Ku -a5 -An"
+DESYNC_ACTIVE="-d1 -d3+s -s6+s -d9+s -s12+s -d15+s -s20+s -d25+s -s30+s -d35+s -r1+s -S -a1 -As -d1 -d3+s -s6+s -d9+s -s12+s -d15+s -s20+s -d25+s -s30+s -d35+s -S -a1"
 DESYNC_FALLBACK=""
 
 HOSTLIST_OPTIONS="-i 127.0.0.1 --port $PORT $DESYNC_ACTIVE $DESYNC_FALLBACK"
