@@ -5,6 +5,21 @@ ArchLinux (проверялось на EndeavourOS и Arch Linux).
 
 ---
 
+## Универсальный установщик (любой дистрибутив)
+
+В репозитории есть `install_byedpi_generic.sh` — дистрибутивно-независимая
+версия: не требует пакетного менеджера, скачивает готовый бинарник `ciadpi`
+с GitHub (hufrea/byedpi releases) с автоопределением архитектуры. Те же
+раздельные файлы `/etc/byedpi/{conf,rule,port,hosts}` + launcher и тот же
+автотест стратегий. Права root получает автоматически (root → sudo → su),
+поэтому подходит и для систем без sudo (например, ALT Linux).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/install_byedpi_generic.sh -o /tmp/byedpi-generic.sh && sh /tmp/byedpi-generic.sh --ipset
+```
+
+---
+
 ## Описание сервиса
 
 **ByeDPI** — локальный прокси-демон, который «разжимает» ответы по протоколам DPI

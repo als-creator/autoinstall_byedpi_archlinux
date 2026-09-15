@@ -606,11 +606,14 @@ for v in BYEDPI_PORT_FILE BYEDPI_RULE_FILE BYEDPI_HOSTS_FILE; do
 done
 
 BIND="${BYEDPI_BIND:-127.0.0.1}"
+CIADPI_BIN="${BYEDPI_BIN:-}"
+[ -n "$CIADPI_BIN" ] || CIADPI_BIN=$(command -v ciadpi 2>/dev/null || echo /usr/local/bin/ciadpi)
+[ -x "$CIADPI_BIN" ] || { echo "byedpi-start: нет ciadpi ($CIADPI_BIN)" >&2; exit 1; }
 PORT="$(cat "$BYEDPI_PORT_FILE")"
 RULE="$(sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$BYEDPI_RULE_FILE")"
 case "${BYEDPI_MODE:-socks}" in
-  transparent) exec /usr/bin/ciadpi -E -H "$BYEDPI_HOSTS_FILE" -i "$BIND" --port "$PORT" $RULE ;;
-  socks)       exec /usr/bin/ciadpi -i "$BIND" --port "$PORT" $RULE ;;
+  transparent) exec "$CIADPI_BIN" -E -H "$BYEDPI_HOSTS_FILE" -i "$BIND" --port "$PORT" $RULE ;;
+  socks)       exec "$CIADPI_BIN" -i "$BIND" --port "$PORT" $RULE ;;
   *) echo "byedpi-start: неизвестный BYEDPI_MODE=$BYEDPI_MODE" >&2; exit 1 ;;
 esac
 EOF
