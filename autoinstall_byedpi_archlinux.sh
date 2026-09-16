@@ -2,6 +2,12 @@
 #
 # ByeDPI installer (ArchLinux/EndeavourOS)
 #
+# Установка «как положено» для Arch: пакет byedpi-bin из AUR через yay
+# (ставит /usr/bin/ciadpi + /etc/byedpi-bin.conf + byedpi-bin.service).
+# Пакетный unit отключается, вместо него пишется свой byedpi.service,
+# который запускает launcher /usr/local/bin/byedpi-start, собирающий опции
+# ciadpi из раздельных файлов конфига при каждом старте.
+#
 # Способы применения:
 #
 #   Режим системы (--system):
@@ -129,11 +135,13 @@ fi
 UID_NUM=$(id -u)
 
 # ---------------------------------------------------------------------------
-# Пакеты
+# Пакеты: byedpi-bin из AUR через yay (packages/Arch)
 # ---------------------------------------------------------------------------
 install_packages(){
   if ! command -v yay >/dev/null 2>&1; then
     log_warn "yay не найден — собираю из AUR..."
+    sudo pacman -S --needed --noconfirm base-devel git || \
+      log_err "Не удалось установить base-devel/git (нужны для сборки yay)"
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
     git clone https://aur.archlinux.org/yay.git "$tmpdir/yay"
@@ -143,10 +151,15 @@ install_packages(){
     trap - EXIT
   fi
   if [ ! -x "$CIADPI" ]; then
-    log_ok "Устанавливаю byedpi-bin через yay..."
-    yay -Sy --noconfirm byedpi-bin
+    log_ok "Устанавливаю byedpi-bin из AUR через yay..."
+    yay -S --noconfirm --needed byedpi-bin
   fi
   [ -x "$CIADPI" ] || log_err "ciadpi не найден: $CIADPI"
+  # Пакетный шаблонный юнит byedpi-bin.service не нужен: свой byedpi.service
+  # с launcher'ом и раздельными файлами конфига ставится ниже. Отключаем
+  # пакетный, чтобы два демона не спорили за порт 14228.
+  sudo systemctl disable --now byedpi-bin.service >/dev/null 2>&1 || true
+  log_ok "Пакет byedpi-bin из AUR: $CIADPI"
 }
 
 # ---------------------------------------------------------------------------
@@ -330,6 +343,9 @@ cmd_off(){
   rm -f "$HOME/.config/systemd/user/byedpi-hosts.timer"
   systemctl --user daemon-reload 2>/dev/null || true
 
+  # пакетный юнит byedpi-bin.service (из AUR-пакета) тоже отключаем
+  sudo systemctl disable --now byedpi-bin.service 2>/dev/null || true
+
   for n in "byedpi-redirect" "byedpi-redirect-$UID_NUM" \
            "byedpi-hosts.timer" "byedpi-hosts-$UID_NUM.timer"; do
     sudo systemctl disable --now "$n" 2>/dev/null || true
@@ -387,10 +403,15 @@ cmd_test(){
 # Конфиг + файлы (port / hosts / rule / conf)
 # ---------------------------------------------------------------------------
 # Перенос значений из старого конфига (один большой BYEDPI_OPTIONS) в новый
-# формат с раздельными файлами, если новый каталог ещё пуст.
+# формат с раздельными файлами, если новый каталог ещё пуст. Учитываются и
+# старый конфиг установщика /etc/byedpi.conf, и конфиг пакета byedpi-bin
+# (тоже BYEDPI_OPTIONS="...", ставится пакетом в /etc/byedpi-bin.conf).
 migrate_old_conf(){
   old=/etc/byedpi.conf
   [ "$SCOPE" = "user" ] && old="$HOME/.config/byedpi.conf"
+  if [ ! -f "$old" ] && [ -f /etc/byedpi-bin.conf ] && [ "$SCOPE" = "system" ]; then
+    old=/etc/byedpi-bin.conf
+  fi
   [ -f "$old" ] && [ ! -f "$RULE_FILE" ] || return 0
   OP=$(grep '^BYEDPI_OPTIONS=' "$old" | head -1 | cut -d'=' -f2- | tr -d '"')
   [ -n "$OP" ] || return 0
@@ -715,8 +736,10 @@ EOF
     fi
   else
     # ==== system scope ====
-    # Свой юнит в /etc/systemd/system перекрывает пакетный /usr/lib, читающий
-    # отдельные файлы через launcher (rule/port/hosts).
+    # Свой юнит /etc/systemd/system/byedpi.service запускает launcher,
+    # который читает раздельные файлы rule/port/hosts через /etc/byedpi/conf.
+    # Пакетный byedpi-bin.service отключён в install_packages и по
+    # команде --off, чтобы не занимать тот же порт 14228.
     sudo tee /etc/systemd/system/byedpi.service >/dev/null <<EOF
 [Unit]
 Description=ByeDPI
@@ -790,6 +813,7 @@ show_summary(){
   echo "═══════════════════════════════════════════════════════════"
   echo "  ByeDPI: scope=$SCOPE метод=$METHOD порт=$PORT"
   echo "═══════════════════════════════════════════════════════════"
+  echo "Пакет:    byedpi-bin (AUR), бинарь $CIADPI"
   echo "Каталог:  $DIR"
   echo "Порт:     $PORT_FILE → $PORT"
   echo "Правило:  $RULE_FILE"
