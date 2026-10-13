@@ -281,9 +281,9 @@ sudo systemctl restart byedpi
 ```
 
 **Автоподбор (перебор):** при первой установке (и по команде `--test`) скрипт
-прогоняет минимальный набор доменов (rutracker, nnm-club, YouTube, rutor,
-Telegram) через нескольких кандидатов правил и записывает в `rule` то, которое
-открывает больше всего из них:
+прогоняет минимальный набор доменов (rutracker, nnm-club, YouTube, rutor)
+через нескольких кандидатов правил и записывает в `rule` то, которое открывает
+больше всего из них:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_archlinux/main/autoinstall_byedpi_archlinux.sh -o /tmp/byedpi.sh && sh /tmp/byedpi.sh --test
@@ -297,7 +297,7 @@ curl -fsSL https://raw.githubusercontent.com/als-creator/autoinstall_byedpi_arch
 sh /tmp/byedpi.sh --check
 ```
 
-Команда печатает по каждому домену один из четырёх вердиктов:
+Команда делает по 3 попытки на домен и печатает один из вердиктов:
 
 | вердикт | что означает | что делать |
 |---|---|---|
@@ -312,16 +312,18 @@ sh /tmp/byedpi.sh --check
 правиле desync (проверены multisplit, fake со сменой SNI, disoob, disorder,
 подмена TLS-версии, разные TTL фейка — результат одинаковый). Синдром: SYN-ACK
 приходит за 5 мс, то есть блокировки по IP нет; RST уходит сразу после
-ClientHello. Поэтому rutor/rutracker открываются «со второго раза» — в браузере
-это незаметно, в curl нужен `--retry`.
+ClientHello. Поэтому rutor открывается «со второго раза» — в браузере это
+незаметно, в curl нужен `--retry`.
 
-**Про Telegram отдельно.** С 05.06.2026 Telegram режет трафик по JA3-отпечатку
-TLS ClientHello и по числу одновременных соединений (пост «MTProto в 2026 году»
-на ntc.party; разработчики telemt это подтвердили). Проверяется так: 3
-соединения проходят, 4-е — бан на отпечаток. Никакой desync, fake или split
-по SNI это не чинит: отпечаток остаётся тем же, и даже подмена SNI на
-`www.google.com` не помогает. Рабочие варианты — прокси (MTProto/FakeTLS), VPN
-либо клиент, собранный с `tdlib-obf`.
+**Почему Telegram нет в списках доменов.** С 05.06.2026 Telegram режет трафик
+по JA3-отпечатку TLS ClientHello и по числу одновременных соединений (ntc.party,
+тема «MTProto в 2026 году»; разработчики telemt это подтвердили): 3 соединения
+проходят, 4-е — бан на отпечаток. Отпечаток не меняется ни от desync, ни от
+fake, ни от split, а подмена SNI на `www.google.com` не помогает — это
+проверено на практике. Поэтому держать `telegram.org`/`t.me` в hostlist
+бессмысленно: домены добавляли бы трафик в обработку без шансов на успех.
+Рабочие варианты для Telegram — прокси (MTProto/FakeTLS), VPN либо клиент,
+собранный с `tdlib-obf`.
 
 Коротко про синтаксис правил:
 
