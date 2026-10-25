@@ -44,6 +44,8 @@ usage(){
   --no-test       пропустить автотест стратегий при установке
   --keep-files    не трогать существующие hosts/rule (по умолчанию они
                   перезаписываются версией из скрипта, старое -> .bak-<дата>)
+  --keep-package  не удалять пакет byedpi-bin при --off (по умолчанию
+                  удаляется вместе с сервисом и конфигом)
   --update        обновить hosts/rule/launcher/юнит из скрипта и перезапустить
   --off | --remove  отключить и удалить всё
   --status|--info   показать текущее состояние
@@ -64,6 +66,7 @@ ACTION="install"   # install | update | off | status | test | check
 ARG_PORT=""
 NO_TEST=""
 KEEP_FILES=""      # --keep-files: не перезаписывать существующие hosts/rule
+KEEP_PACKAGE=""    # --keep-package: не удалять пакет byedpi-bin при --off
 BLOCK_QUIC=""      # yes|no; пусто — взять из conf или по умолчанию (ipset: yes)
 
 for a in "$@"; do
@@ -76,6 +79,7 @@ for a in "$@"; do
     --check)    ACTION=check ;;
     --update|--upgrade) ACTION=update ;;
     --keep-files) KEEP_FILES=1 ;;
+    --keep-package) KEEP_PACKAGE=1 ;;
     --block-quic) BLOCK_QUIC=yes ;;
     --allow-quic) BLOCK_QUIC=no ;;
     --no-test)   NO_TEST=1 ;;
@@ -84,7 +88,7 @@ for a in "$@"; do
     *) log_err "Неизвестный аргумент: $a (см. $0 --help)" ;;
   esac
 done
-[ -z "$METHOD" ] && METHOD=extension
+[ -z "$METHOD" ] && METHOD=ipset
 PORT="${ARG_PORT:-14228}"
 
 CIADPI=/usr/bin/ciadpi     # пакет byedpi-bin из AUR
@@ -779,8 +783,12 @@ cmd_off(){
     run_root "while iptables -t filter -D OUTPUT -j $c 2>/dev/null; do :; done; iptables -t filter -F $c 2>/dev/null || true; iptables -t filter -X $c 2>/dev/null || true"
   done
   run_root "rm -rf $DIR $LAUNCHER"
-  echo "ByeDPI отключён. Конфиги удалены. Пакет byedpi-bin из AUR остаётся"
-  echo "(удалить полностью: yay -R byedpi-bin)."
+  if [ -z "$KEEP_PACKAGE" ]; then
+    run_root "pacman -R --noconfirm byedpi-bin 2>/dev/null || true"
+    echo "ByeDPI отключён. Конфиги, правила и пакет byedpi-bin удалены."
+  else
+    echo "ByeDPI отключён. Конфиги и правила удалены, пакет byedpi-bin оставлен (--keep-package)."
+  fi
   exit 0
 }
 
