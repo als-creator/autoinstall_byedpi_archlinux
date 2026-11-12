@@ -178,7 +178,7 @@ probe_direct(){ # домен -> 0, если открывается "как ес�
 # Минимальный набор доменов, который обязан открываться:
 #   rutor / rutracker / nnm-club / youtube
 # Именно по нему выбирается правило desync.
-TEST_PROBES="rutracker.org nnmclub.to www.youtube.com redirector.googlevideo.com i.ytimg.com yt3.googleusercontent.com discord.com"
+TEST_PROBES="rutracker.org nnmclub.to www.youtube.com redirector.googlevideo.com i.ytimg.com yt3.googleusercontent.com discord.com soundcloud.com"
 
 TEST_RULES="\
 long-strategy|-d1 -d3+s -s6+s -d9+s -s12+s -d15+s -s20+s -d25+s -s30+s -d35+s -r1+s -S -a1 -As -d1 -d3+s -s6+s -d9+s -s12+s -d15+s -s20+s -d25+s -s30+s -d35+s -S -a1
@@ -401,7 +401,25 @@ twimg.com
 torproject.org
 archive.org
 web.archive.org
+# SoundCloud (страница, API, медиа и обложки; поддомены учитываются)
 soundcloud.com
+soundcloud.app.goo.gl
+api.soundcloud.com
+api-v2.soundcloud.com
+sndcdn.com
+cf-media.sndcdn.com
+cf-hls-media.sndcdn.com
+cf-hls-opus-media.sndcdn.com
+a-v2.sndcdn.com
+wave.sndcdn.com
+i1.sndcdn.com
+i2.sndcdn.com
+i3.sndcdn.com
+i4.sndcdn.com
+cloudfront.net
+soundcloud.cloud
+media-streaming.soundcloud.cloud
+playback.media-streaming.soundcloud.cloud
 mullvad.net
 roskomsvoboda.org
 medium.com
